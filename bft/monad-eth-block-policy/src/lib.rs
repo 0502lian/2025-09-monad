@@ -14,1375 +14,1375 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 // 使用标准库中的集合、标记类型以及范围操作。
-// 中文注释: 参见下一行代码含义
+
 use std::{
     // 引入有序映射和哈希集合以跟踪账户状态。
-    // 中文注释: 参见下一行代码含义
+    
     collections::{BTreeMap, HashSet},
     // 引入 PhantomData 用于保存泛型类型信息。
-    // 中文注释: 参见下一行代码含义
+    
     marker::PhantomData,
     // 引入 Deref、Range、RangeFrom 以便处理引用和区间。
-    // 中文注释: 参见下一行代码含义
+    
     ops::{Deref, Range, RangeFrom},
-// 中文注释: 参见下一行代码含义
+
 };
 
 // 引入共识层定义的交易相关类型及封装格式。
-// 中文注释: 参见下一行代码含义
+
 use alloy_consensus::{
     // Recovered 和 Transaction 用于处理已恢复签名的交易。
-    // 中文注释: 参见下一行代码含义
+    
     transaction::{Recovered, Transaction},
     // TxEnvelope 代表通用交易封装。
-    // 中文注释: 参见下一行代码含义
+    
     TxEnvelope,
-// 中文注释: 参见下一行代码含义
+
 };
 // 引入 EIP-7702 授权恢复结构。
-// 中文注释: 参见下一行代码含义
+
 use alloy_eips::eip7702::RecoveredAuthorization;
 // 引入地址、交易哈希及大整数类型。
-// 中文注释: 参见下一行代码含义
+
 use alloy_primitives::{Address, TxHash, U256};
 // 引入迭代器工具用于集合操作。
-// 中文注释: 参见下一行代码含义
+
 use itertools::Itertools;
 // 引入链配置及修订相关类型。
-// 中文注释: 参见下一行代码含义
+
 use monad_chain_config::{
-    // 中文注释: 参见下一行代码含义
+    
     execution_revision::MonadExecutionRevision, revision::ChainRevision, ChainConfig,
-// 中文注释: 参见下一行代码含义
+
 };
 // 引入共识块、账户余额、策略等核心类型。
-// 中文注释: 参见下一行代码含义
+
 use monad_consensus_types::{
-    // 中文注释: 参见下一行代码含义
+    
     block::{
-        // 中文注释: 参见下一行代码含义
+        
         AccountBalanceState, BlockPolicy, BlockPolicyBlockValidator,
-        // 中文注释: 参见下一行代码含义
+        
         BlockPolicyBlockValidatorError, BlockPolicyError, ConsensusFullBlock, TxnFee, TxnFees,
-    // 中文注释: 参见下一行代码含义
+    
     },
     // 引入区块树根信息结构。
-    // 中文注释: 参见下一行代码含义
+    
     checkpoint::RootInfo,
-// 中文注释: 参见下一行代码含义
+
 };
 // 引入证书签名公钥与可恢复签名能力。
-// 中文注释: 参见下一行代码含义
+
 use monad_crypto::certificate_signature::{
-    // 中文注释: 参见下一行代码含义
+    
     CertificateSignaturePubKey, CertificateSignatureRecoverable,
-// 中文注释: 参见下一行代码含义
+
 };
 // 引入以太坊账户、执行协议、区块头与验证交易类型。
-// 中文注释: 参见下一行代码含义
+
 use monad_eth_types::{EthAccount, EthExecutionProtocol, EthHeader, ValidatedTx};
 // 引入状态后端接口及错误类型。
-// 中文注释: 参见下一行代码含义
+
 use monad_state_backend::{StateBackend, StateBackendError};
 // 引入系统交易类型。
-// 中文注释: 参见下一行代码含义
+
 use monad_system_calls::SystemTransaction;
 // 引入与余额、区块、轮次等相关的基本类型常量。
-// 中文注释: 参见下一行代码含义
+
 use monad_types::{
-    // 中文注释: 参见下一行代码含义
+    
     Balance, BlockId, Epoch, Nonce, Round, SeqNum, GENESIS_BLOCK_ID, GENESIS_ROUND, GENESIS_SEQ_NUM,
-// 中文注释: 参见下一行代码含义
+
 };
 // 引入签名集合接口。
-// 中文注释: 参见下一行代码含义
+
 use monad_validator::signature_collection::SignatureCollection;
 // 引入按序向量映射用于缓存。
-// 中文注释: 参见下一行代码含义
+
 use sorted_vector_map::SortedVectorMap;
 // 引入日志宏以便调试跟踪。
-// 中文注释: 参见下一行代码含义
+
 use tracing::{debug, trace, warn};
 
 // 引入本模块中的 nonce 使用记录结构。
-// 中文注释: 参见下一行代码含义
+
 use self::nonce_usage::{NonceUsage, NonceUsageMap};
 
 // 暴露 nonce 使用相关子模块。
-// 中文注释: 参见下一行代码含义
+
 pub mod nonce_usage;
 // 暴露验证相关子模块。
-// 中文注释: 参见下一行代码含义
+
 pub mod validation;
 
 // 定义保留余额检查的阶段枚举。
-// 中文注释: 参见下一行代码含义
+
 pub enum ReserveBalanceCheck {
     // 插入阶段需要检查保留余额。
-    // 中文注释: 参见下一行代码含义
+    
     Insert,
     // 提案阶段需要检查保留余额。
-    // 中文注释: 参见下一行代码含义
+    
     Propose,
     // 验证阶段需要检查保留余额。
-    // 中文注释: 参见下一行代码含义
+    
     Validate,
-// 中文注释: 参见下一行代码含义
+
 }
 
 // 在 TFM 启用前计算交易可能消耗的最大金额。
-// 中文注释: 参见下一行代码含义
+
 pub fn pre_tfm_compute_max_txn_cost(txn: &TxEnvelope) -> U256 {
     // 读取交易本身的数额。
-    // 中文注释: 参见下一行代码含义
+    
     let txn_value = txn.value();
     // 将 gas 上限转换为 U256。
-    // 中文注释: 参见下一行代码含义
+    
     let gas_limit = U256::from(txn.gas_limit());
     // 获取最高 gas 单价并转换为 U256。
-    // 中文注释: 参见下一行代码含义
+    
     let max_fee = U256::from(txn.max_fee_per_gas());
     // 计算 gas 费用并确保不溢出。
-    // 中文注释: 参见下一行代码含义
+    
     let max_gas_cost = gas_limit.checked_mul(max_fee).expect("no overflow");
     // 返回交易数额与 gas 费用之和，使用饱和加防止溢出。
-    // 中文注释: 参见下一行代码含义
+    
     txn_value.saturating_add(max_gas_cost)
-// 中文注释: 参见下一行代码含义
+
 }
 
 // 计算在 TFM 启用后交易可能消耗的最大总价值。
-// 中文注释: 参见下一行代码含义
+
 pub fn compute_txn_max_value(txn: &TxEnvelope, base_fee: u64) -> U256 {
     // 读取交易数额。
-    // 中文注释: 参见下一行代码含义
+    
     let txn_value = txn.value();
     // 计算最大 gas 花费。
-    // 中文注释: 参见下一行代码含义
+    
     let gas_cost = compute_txn_max_gas_cost(txn, base_fee);
     // 返回数额与 gas 费用之和。
-    // 中文注释: 参见下一行代码含义
+    
     txn_value.saturating_add(gas_cost)
-// 中文注释: 参见下一行代码含义
+
 }
 
 // 根据 base fee 计算交易最大可能的 gas 成本。
-// 中文注释: 参见下一行代码含义
+
 pub fn compute_txn_max_gas_cost(txn: &TxEnvelope, base_fee: u64) -> U256 {
     // 将 gas 上限转成 U256。
-    // 中文注释: 参见下一行代码含义
+    
     let gas_limit = U256::from(txn.gas_limit());
     // 取最高报价。
-    // 中文注释: 参见下一行代码含义
+    
     let max_fee = U256::from(txn.max_fee_per_gas());
     // 获取最大优先费，缺省为零。
-    // 中文注释: 参见下一行代码含义
+    
     let priority_fee = U256::from(txn.max_priority_fee_per_gas().unwrap_or(0));
     // 将 base fee 转为 U256。
-    // 中文注释: 参见下一行代码含义
+    
     let base_fee = U256::from(base_fee);
     // 实际 gas 出价为最高出价与 base fee 加优先费中的较小者。
-    // 中文注释: 参见下一行代码含义
+    
     let gas_bid = max_fee.min(base_fee.saturating_add(priority_fee));
     // 计算最终花费并确保不溢出。
-    // 中文注释: 参见下一行代码含义
+    
     gas_limit.checked_mul(gas_bid).expect("no overflow")
-// 中文注释: 参见下一行代码含义
+
 }
 
 // 用于在状态后端中定位区块执行结果的索引结构。
-// 中文注释: 参见下一行代码含义
+
 struct BlockLookupIndex {
     // 对应区块的唯一标识。
-    // 中文注释: 参见下一行代码含义
+    
     block_id: BlockId,
     // 区块的序号。
-    // 中文注释: 参见下一行代码含义
+    
     seq_num: SeqNum,
     // 区块所属的轮次。
-    // 中文注释: 参见下一行代码含义
+    
     round: Round,
     // 指示该区块是否已经最终确认。
-    // 中文注释: 参见下一行代码含义
+    
     is_finalized: bool,
-// 中文注释: 参见下一行代码含义
+
 }
 
 /// A consensus block that has gone through the EthereumValidator and makes the decoded and
 /// verified transactions available to access
 // 代表通过以太坊验证器的共识区块，携带验证后的交易。
-// 中文注释: 参见下一行代码含义
+
 #[derive(Debug, Clone)]
-// 中文注释: 参见下一行代码含义
+
 pub struct EthValidatedBlock<ST, SCT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     ST: CertificateSignatureRecoverable,
-    // 中文注释: 参见下一行代码含义
+    
     SCT: SignatureCollection<NodeIdPubKey = CertificateSignaturePubKey<ST>>,
-// 中文注释: 参见下一行代码含义
+
 {
     // 原始共识区块。
-    // 中文注释: 参见下一行代码含义
+    
     pub block: ConsensusFullBlock<ST, SCT, EthExecutionProtocol>,
     // 区块内包含的系统交易集合。
-    // 中文注释: 参见下一行代码含义
+    
     pub system_txns: Vec<SystemTransaction>,
     // 已验证并恢复签名的用户交易。
-    // 中文注释: 参见下一行代码含义
+    
     pub validated_txns: Vec<ValidatedTx>,
     // 交易所涉及的 nonce 使用记录。
-    // 中文注释: 参见下一行代码含义
+    
     pub nonce_usages: NonceUsageMap,
     // 交易费用明细。
-    // 中文注释: 参见下一行代码含义
+    
     pub txn_fees: TxnFees,
-// 中文注释: 参见下一行代码含义
+
 }
 
-// 中文注释: 参见下一行代码含义
+
 impl<ST, SCT> AsRef<EthValidatedBlock<ST, SCT>> for EthValidatedBlock<ST, SCT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     ST: CertificateSignatureRecoverable,
-    // 中文注释: 参见下一行代码含义
+    
     SCT: SignatureCollection<NodeIdPubKey = CertificateSignaturePubKey<ST>>,
-// 中文注释: 参见下一行代码含义
+
 {
     // 提供引用访问自身的便捷实现。
-    // 中文注释: 参见下一行代码含义
+    
     fn as_ref(&self) -> &EthValidatedBlock<ST, SCT> {
-        // 中文注释: 参见下一行代码含义
+        
         self
-    // 中文注释: 参见下一行代码含义
+    
     }
-// 中文注释: 参见下一行代码含义
+
 }
 
-// 中文注释: 参见下一行代码含义
+
 impl<ST, SCT> Deref for EthValidatedBlock<ST, SCT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     ST: CertificateSignatureRecoverable,
-    // 中文注释: 参见下一行代码含义
+    
     SCT: SignatureCollection<NodeIdPubKey = CertificateSignaturePubKey<ST>>,
-// 中文注释: 参见下一行代码含义
+
 {
-    // 中文注释: 参见下一行代码含义
+    
     type Target = ConsensusFullBlock<ST, SCT, EthExecutionProtocol>;
     // 允许直接将结构体视为内部的共识区块。
-    // 中文注释: 参见下一行代码含义
+    
     fn deref(&self) -> &Self::Target {
-        // 中文注释: 参见下一行代码含义
+        
         &self.block
-    // 中文注释: 参见下一行代码含义
+    
     }
-// 中文注释: 参见下一行代码含义
+
 }
 
-// 中文注释: 参见下一行代码含义
+
 impl<ST, SCT> EthValidatedBlock<ST, SCT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     ST: CertificateSignatureRecoverable,
-    // 中文注释: 参见下一行代码含义
+    
     SCT: SignatureCollection<NodeIdPubKey = CertificateSignaturePubKey<ST>>,
-// 中文注释: 参见下一行代码含义
+
 {
     // 收集区块中所有已验证交易的哈希。
-    // 中文注释: 参见下一行代码含义
+    
     pub fn get_validated_txn_hashes(&self) -> Vec<TxHash> {
-        // 中文注释: 参见下一行代码含义
+        
         self.validated_txns.iter().map(|t| *t.tx_hash()).collect()
-    // 中文注释: 参见下一行代码含义
+    
     }
 
     // 统计区块中所有已验证交易的总 gas 使用量。
-    // 中文注释: 参见下一行代码含义
+    
     pub fn get_total_gas(&self) -> u64 {
-        // 中文注释: 参见下一行代码含义
+        
         self.validated_txns
-            // 中文注释: 参见下一行代码含义
+            
             .iter()
-            // 中文注释: 参见下一行代码含义
+            
             .fold(0, |acc, tx| acc + tx.gas_limit())
-    // 中文注释: 参见下一行代码含义
+    
     }
-// 中文注释: 参见下一行代码含义
+
 }
 
-// 中文注释: 参见下一行代码含义
+
 impl<ST, SCT> PartialEq for EthValidatedBlock<ST, SCT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     ST: CertificateSignatureRecoverable,
-    // 中文注释: 参见下一行代码含义
+    
     SCT: SignatureCollection<NodeIdPubKey = CertificateSignaturePubKey<ST>>,
-// 中文注释: 参见下一行代码含义
+
 {
-    // 中文注释: 参见下一行代码含义
+    
     fn eq(&self, other: &Self) -> bool {
-        // 中文注释: 参见下一行代码含义
+        
         self.block == other.block
-    // 中文注释: 参见下一行代码含义
+    
     }
-// 中文注释: 参见下一行代码含义
+
 }
-// 中文注释: 参见下一行代码含义
+
 impl<ST, SCT> Eq for EthValidatedBlock<ST, SCT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     ST: CertificateSignatureRecoverable,
-    // 中文注释: 参见下一行代码含义
+    
     SCT: SignatureCollection<NodeIdPubKey = CertificateSignaturePubKey<ST>>,
-// 中文注释: 参见下一行代码含义
+
 {
-// 中文注释: 参见下一行代码含义
+
 }
 
 // 缓存区块内各账户的交易费用信息。
-// 中文注释: 参见下一行代码含义
+
 #[derive(Debug)]
-// 中文注释: 参见下一行代码含义
+
 struct BlockTxnFeeStates {
     // 每个地址对应的交易费用。
-    // 中文注释: 参见下一行代码含义
+    
     txn_fees: TxnFees,
-// 中文注释: 参见下一行代码含义
+
 }
 
-// 中文注释: 参见下一行代码含义
+
 impl BlockTxnFeeStates {
     // 根据地址获取费用记录。
-    // 中文注释: 参见下一行代码含义
+    
     fn get(&self, eth_address: &Address) -> Option<TxnFee> {
-        // 中文注释: 参见下一行代码含义
+        
         self.txn_fees.get(eth_address).cloned()
-    // 中文注释: 参见下一行代码含义
+    
     }
-// 中文注释: 参见下一行代码含义
+
 }
 
 // 已提交区块的缓存记录。
-// 中文注释: 参见下一行代码含义
+
 #[derive(Debug)]
-// 中文注释: 参见下一行代码含义
+
 struct CommittedBlock {
     // 区块标识。
-    // 中文注释: 参见下一行代码含义
+    
     block_id: BlockId,
     // 区块轮次。
-    // 中文注释: 参见下一行代码含义
+    
     round: Round,
     // 所属纪元。
-    // 中文注释: 参见下一行代码含义
+    
     epoch: Epoch,
     // 区块序号。
-    // 中文注释: 参见下一行代码含义
+    
     seq_num: SeqNum,
     // 记录 nonce 使用情况。
-    // 中文注释: 参见下一行代码含义
+    
     nonce_usages: NonceUsageMap,
     // 区块时间戳（纳秒）。
-    // 中文注释: 参见下一行代码含义
+    
     timestamp_ns: u128,
     // 区块中产生的交易费用。
-    // 中文注释: 参见下一行代码含义
+    
     fees: BlockTxnFeeStates,
 
     // 区块的 base fee 字段。
-    // 中文注释: 参见下一行代码含义
+    
     base_fee: Option<u64>,
     // base fee 的趋势值。
-    // 中文注释: 参见下一行代码含义
+    
     base_fee_trend: Option<u64>,
     // base fee 的动量值。
-    // 中文注释: 参见下一行代码含义
+    
     base_fee_moment: Option<u64>,
     // 区块的总 gas 使用量。
-    // 中文注释: 参见下一行代码含义
+    
     block_gas_usage: u64,
-// 中文注释: 参见下一行代码含义
+
 }
 
 // 用于缓存最近提交区块的循环缓冲区。
-// 中文注释: 参见下一行代码含义
+
 #[derive(Debug)]
-// 中文注释: 参见下一行代码含义
+
 struct CommittedBlkBuffer<ST, SCT, CCT, CRT> {
     // 以区块序号为键存储提交区块。
-    // 中文注释: 参见下一行代码含义
+    
     blocks: SortedVectorMap<SeqNum, CommittedBlock>,
     // 缓冲区的最小容量，通常为执行延迟的两倍。
-    // 中文注释: 参见下一行代码含义
+    
     min_buffer_size: usize, // should be 2 * execution delay
 
     // PhantomData 用于保持泛型生命周期。
-    // 中文注释: 参见下一行代码含义
+    
     _phantom: PhantomData<(ST, SCT, fn(&CCT, &CRT))>,
-// 中文注释: 参见下一行代码含义
+
 }
 
-// 中文注释: 参见下一行代码含义
+
 impl<ST, SCT, CCT, CRT> CommittedBlkBuffer<ST, SCT, CCT, CRT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     ST: CertificateSignatureRecoverable,
-    // 中文注释: 参见下一行代码含义
+    
     SCT: SignatureCollection<NodeIdPubKey = CertificateSignaturePubKey<ST>>,
-    // 中文注释: 参见下一行代码含义
+    
     CCT: ChainConfig<CRT>,
-    // 中文注释: 参见下一行代码含义
+    
     CRT: ChainRevision,
-// 中文注释: 参见下一行代码含义
+
 {
-    // 中文注释: 参见下一行代码含义
+    
     fn new(min_buffer_size: usize) -> Self {
         // 初始化缓存结构并记录最小容量。
-        // 中文注释: 参见下一行代码含义
+        
         Self {
-            // 中文注释: 参见下一行代码含义
+            
             blocks: Default::default(),
-            // 中文注释: 参见下一行代码含义
+            
             min_buffer_size,
 
-            // 中文注释: 参见下一行代码含义
+            
             _phantom: Default::default(),
-        // 中文注释: 参见下一行代码含义
+        
         }
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn get_epoch(&self, seq_num: SeqNum) -> Option<Epoch> {
         // 根据区块序号查询纪元信息。
-        // 中文注释: 参见下一行代码含义
+        
         self.blocks
-            // 中文注释: 参见下一行代码含义
+            
             .get(&seq_num)
-            // 中文注释: 参见下一行代码含义
+            
             .map(|committed_block| committed_block.epoch)
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn update_account_balance(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         account_balance: &mut AccountBalanceState,
-        // 中文注释: 参见下一行代码含义
+        
         eth_address: &Address,
-        // 中文注释: 参见下一行代码含义
+        
         execution_delay: SeqNum,
-        // 中文注释: 参见下一行代码含义
+        
         emptying_txn_check_block_range: Range<SeqNum>,
-        // 中文注释: 参见下一行代码含义
+        
         reserve_balance_check_block_range: RangeFrom<SeqNum>,
-        // 中文注释: 参见下一行代码含义
+        
         chain_config: &CCT,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<SeqNum, BlockPolicyError> {
-        // 中文注释: 参见下一行代码含义
+        
         trace!(
-            // 中文注释: 参见下一行代码含义
+            
             ?emptying_txn_check_block_range,
-            // 中文注释: 参见下一行代码含义
+            
             ?reserve_balance_check_block_range,
-            // 中文注释: 参见下一行代码含义
+            
             ?account_balance,
-            // 中文注释: 参见下一行代码含义
+            
             ?eth_address,
-            // 中文注释: 参见下一行代码含义
+            
             "before update_account_balance"
-        // 中文注释: 参见下一行代码含义
+        
         );
 
-        // 中文注释: 参见下一行代码含义
+        
         let mut next_validate = emptying_txn_check_block_range.start;
-        // 中文注释: 参见下一行代码含义
+        
         for (seq_num, block) in self.blocks.range(emptying_txn_check_block_range) {
             // 确认遍历区间连续。
-            // 中文注释: 参见下一行代码含义
+            
             assert_eq!(*seq_num, next_validate, "Emptying range is not contiguous");
 
-            // 中文注释: 参见下一行代码含义
+            
             if block.fees.get(eth_address).is_some()
-                // 中文注释: 参见下一行代码含义
+                
                 && account_balance.block_seqnum_of_latest_txn < block.seq_num
-            // 中文注释: 参见下一行代码含义
+            
             {
                 // 有费用产生时更新最近交易区块序号。
-                // 中文注释: 参见下一行代码含义
+                
                 account_balance.block_seqnum_of_latest_txn = block.seq_num;
-            // 中文注释: 参见下一行代码含义
+            
             }
-            // 中文注释: 参见下一行代码含义
+            
             next_validate += SeqNum(1);
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         for (seq_num, block) in self.blocks.range(reserve_balance_check_block_range) {
-            // 中文注释: 参见下一行代码含义
+            
             assert_eq!(
-                // 中文注释: 参见下一行代码含义
+                
                 *seq_num, next_validate,
-                // 中文注释: 参见下一行代码含义
+                
                 "Reserve balance check range is not contiguous"
-            // 中文注释: 参见下一行代码含义
+            
             );
 
-            // 中文注释: 参见下一行代码含义
+            
             if let Some(block_txn_fees) = block.fees.get(eth_address) {
                 // 构建区块验证器以应用费用变化。
-                // 中文注释: 参见下一行代码含义
+                
                 let validator = EthBlockPolicyBlockValidator::new(
-                    // 中文注释: 参见下一行代码含义
+                    
                     block.seq_num,
-                    // 中文注释: 参见下一行代码含义
+                    
                     execution_delay,
-                    // 中文注释: 参见下一行代码含义
+                    
                     block
-                        // 中文注释: 参见下一行代码含义
+                        
                         .base_fee
-                        // 中文注释: 参见下一行代码含义
+                        
                         .unwrap_or(monad_tfm::base_fee::PRE_TFM_BASE_FEE),
-                    // 中文注释: 参见下一行代码含义
+                    
                     &chain_config.get_chain_revision(block.round),
-                    // 中文注释: 参见下一行代码含义
+                    
                     &chain_config
-                        // 中文注释: 参见下一行代码含义
+                        
                         .get_execution_chain_revision(timestamp_ns_to_secs(block.timestamp_ns)),
-                // 中文注释: 参见下一行代码含义
+                
                 )?;
-                // 中文注释: 参见下一行代码含义
+                
                 trace!(
-                    // 中文注释: 参见下一行代码含义
+                    
                     "applying fees for block {:?}, curr acc balance: {:?}",
-                    // 中文注释: 参见下一行代码含义
+                    
                     block.seq_num,
-                    // 中文注释: 参见下一行代码含义
+                    
                     account_balance
-                // 中文注释: 参见下一行代码含义
+                
                 );
                 // 更新账户余额状态。
-                // 中文注释: 参见下一行代码含义
+                
                 validator.try_apply_block_fees(account_balance, &block_txn_fees, eth_address)?;
-            // 中文注释: 参见下一行代码含义
+            
             }
-            // 中文注释: 参见下一行代码含义
+            
             next_validate += SeqNum(1);
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         trace!(
-            // 中文注释: 参见下一行代码含义
+            
             ?account_balance,
-            // 中文注释: 参见下一行代码含义
+            
             ?eth_address,
-            // 中文注释: 参见下一行代码含义
+            
             "after update_account_balance"
-        // 中文注释: 参见下一行代码含义
+        
         );
 
-        // 中文注释: 参见下一行代码含义
+        
         Ok(next_validate)
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn update_committed_block(&mut self, block: &EthValidatedBlock<ST, SCT>) {
-        // 中文注释: 参见下一行代码含义
+        
         let block_number = block.get_seq_num();
-        // 中文注释: 参见下一行代码含义
+        
         debug!(?block_number, ?block.txn_fees, "update_committed_block");
-        // 中文注释: 参见下一行代码含义
+        
         if let Some((&last_block_num, _)) = self.blocks.last_key_value() {
             // 新区块必须紧随缓存中的最后一个区块。
-            // 中文注释: 参见下一行代码含义
+            
             assert_eq!(last_block_num + SeqNum(1), block_number);
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         let current_size = self.blocks.len();
 
-        // 中文注释: 参见下一行代码含义
+        
         if current_size >= self.min_buffer_size.saturating_mul(2) {
             // 当缓存超过两倍容量时，丢弃最早的区块。
-            // 中文注释: 参见下一行代码含义
+            
             let (&first_block_num, _) = self.blocks.first_key_value().expect("txns non-empty");
-            // 中文注释: 参见下一行代码含义
+            
             let divider =
-                // 中文注释: 参见下一行代码含义
+                
                 first_block_num + SeqNum(current_size as u64 - self.min_buffer_size as u64);
 
             // TODO: revisit once perf implications are understood
-            // 中文注释: 参见下一行代码含义
+            
             self.blocks = self.blocks.split_off(&divider);
             // 断言保留的新缓存依然连续。
-            // 中文注释: 参见下一行代码含义
+            
             assert_eq!(
-                // 中文注释: 参见下一行代码含义
+                
                 *self.blocks.last_key_value().expect("non-empty").0 + SeqNum(1),
-                // 中文注释: 参见下一行代码含义
+                
                 block_number
-            // 中文注释: 参见下一行代码含义
+            
             );
             // 确认当前缓存不少于最小容量。
-            // 中文注释: 参见下一行代码含义
+            
             assert!(self.blocks.len() >= self.min_buffer_size);
-        // 中文注释: 参见下一行代码含义
+        
         }
 
         // 计算区块总 gas 用于后续缓存。
-        // 中文注释: 参见下一行代码含义
+        
         let block_gas_usage = block.get_total_gas();
 
-        // 中文注释: 参见下一行代码含义
+        
         assert!(self
-            // 中文注释: 参见下一行代码含义
+            
             .blocks
-            // 中文注释: 参见下一行代码含义
+            
             .insert(
-                // 中文注释: 参见下一行代码含义
+                
                 block_number,
-                // 中文注释: 参见下一行代码含义
+                
                 CommittedBlock {
-                    // 中文注释: 参见下一行代码含义
+                    
                     block_id: block.get_id(),
-                    // 中文注释: 参见下一行代码含义
+                    
                     round: block.get_block_round(),
-                    // 中文注释: 参见下一行代码含义
+                    
                     epoch: block.get_epoch(),
-                    // 中文注释: 参见下一行代码含义
+                    
                     seq_num: block.get_seq_num(),
-                    // 中文注释: 参见下一行代码含义
+                    
                     nonce_usages: block.nonce_usages.clone(),
-                    // 中文注释: 参见下一行代码含义
+                    
                     timestamp_ns: block.get_timestamp(),
-                    // 中文注释: 参见下一行代码含义
+                    
                     fees: BlockTxnFeeStates {
-                        // 中文注释: 参见下一行代码含义
+                        
                         txn_fees: block.txn_fees.clone()
-                    // 中文注释: 参见下一行代码含义
+                    
                     },
 
-                    // 中文注释: 参见下一行代码含义
+                    
                     base_fee: block.block.header().base_fee,
-                    // 中文注释: 参见下一行代码含义
+                    
                     base_fee_trend: block.block.header().base_fee_trend,
-                    // 中文注释: 参见下一行代码含义
+                    
                     base_fee_moment: block.block.header().base_fee_moment,
-                    // 中文注释: 参见下一行代码含义
+                    
                     block_gas_usage,
-                // 中文注释: 参见下一行代码含义
+                
                 },
-            // 中文注释: 参见下一行代码含义
+            
             )
-            // 中文注释: 参见下一行代码含义
+            
             .is_none());
-    // 中文注释: 参见下一行代码含义
+    
     }
-// 中文注释: 参见下一行代码含义
+
 }
 
-// 中文注释: 参见下一行代码含义
+
 pub struct EthBlockPolicyBlockValidator<CRT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     CRT: ChainRevision,
-// 中文注释: 参见下一行代码含义
+
 {
     // 当前验证的区块序号。
-    // 中文注释: 参见下一行代码含义
+    
     block_seq_num: SeqNum,
     // 执行延迟，用于确定余额窗口。
-    // 中文注释: 参见下一行代码含义
+    
     execution_delay: SeqNum,
     // 当前区块的 base fee。
-    // 中文注释: 参见下一行代码含义
+    
     base_fee: u64,
     // 共识链的修订信息。
-    // 中文注释: 参见下一行代码含义
+    
     chain_revision: CRT,
     // 执行环境的修订信息。
-    // 中文注释: 参见下一行代码含义
+    
     execution_chain_revision: MonadExecutionRevision,
     // PhantomData 占位以保存类型信息。
-    // 中文注释: 参见下一行代码含义
+    
     _phantom: PhantomData<CRT>,
-// 中文注释: 参见下一行代码含义
+
 }
 
 // 判断一笔交易是否可能是“掏空交易”，即远离最近的历史交易。
-// 中文注释: 参见下一行代码含义
+
 fn is_possibly_emptying_transaction(
-    // 中文注释: 参见下一行代码含义
+    
     block_seq_num_of_curr_txn: SeqNum,
-    // 中文注释: 参见下一行代码含义
+    
     balance_state: &AccountBalanceState,
-    // 中文注释: 参见下一行代码含义
+    
     execution_delay: SeqNum,
-// 中文注释: 参见下一行代码含义
+
 ) -> bool {
     // txn T is emptying if there is no "prior txn" i.e. a txn from the same sender sent from block P so that P >= block_number(T) - k + 1.
-    // 中文注释: 参见下一行代码含义
+    
     let blocks_since_latest_txn = SeqNum(
-        // 中文注释: 参见下一行代码含义
+        
         block_seq_num_of_curr_txn
-            // 中文注释: 参见下一行代码含义
+            
             .0
-            // 中文注释: 参见下一行代码含义
+            
             .saturating_sub(balance_state.block_seqnum_of_latest_txn.0),
-    // 中文注释: 参见下一行代码含义
+    
     );
     // 未被委托且距离最近交易超过执行延迟阈值则视为掏空交易。
-    // 中文注释: 参见下一行代码含义
+    
     !balance_state.is_delegated && blocks_since_latest_txn > execution_delay - SeqNum(1)
-// 中文注释: 参见下一行代码含义
+
 }
 
 // 将纳秒级时间戳转换为秒，避免超过 u64 上限。
-// 中文注释: 参见下一行代码含义
+
 pub fn timestamp_ns_to_secs(timestamp_ns: u128) -> u64 {
-    // 中文注释: 参见下一行代码含义
+    
     const NSEC_PER_SEC: u128 = 1_000_000_000;
-    // 中文注释: 参见下一行代码含义
+    
     let timestamp_seconds = timestamp_ns / NSEC_PER_SEC;
-    // 中文注释: 参见下一行代码含义
+    
     timestamp_seconds.min(u64::MAX.into()) as u64
-// 中文注释: 参见下一行代码含义
+
 }
 
-// 中文注释: 参见下一行代码含义
+
 impl<CRT> BlockPolicyBlockValidator<CRT> for EthBlockPolicyBlockValidator<CRT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     Self: Sized,
-    // 中文注释: 参见下一行代码含义
+    
     CRT: ChainRevision,
-// 中文注释: 参见下一行代码含义
+
 {
-    // 中文注释: 参见下一行代码含义
+    
     type Transaction = Recovered<TxEnvelope>;
 
-    // 中文注释: 参见下一行代码含义
+    
     fn new(
-        // 中文注释: 参见下一行代码含义
+        
         block_seq_num: SeqNum,
-        // 中文注释: 参见下一行代码含义
+        
         execution_delay: SeqNum,
-        // 中文注释: 参见下一行代码含义
+        
         base_fee: u64,
-        // 中文注释: 参见下一行代码含义
+        
         chain_revision: &CRT,
-        // 中文注释: 参见下一行代码含义
+        
         execution_chain_revision: &MonadExecutionRevision,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<Self, BlockPolicyError> {
         // 构造区块策略验证器实例，拷贝链修订信息。
-        // 中文注释: 参见下一行代码含义
+        
         Ok(Self {
-            // 中文注释: 参见下一行代码含义
+            
             block_seq_num,
-            // 中文注释: 参见下一行代码含义
+            
             execution_delay,
-            // 中文注释: 参见下一行代码含义
+            
             base_fee,
-            // 中文注释: 参见下一行代码含义
+            
             chain_revision: *chain_revision,
-            // 中文注释: 参见下一行代码含义
+            
             execution_chain_revision: *execution_chain_revision,
-            // 中文注释: 参见下一行代码含义
+            
             _phantom: PhantomData,
-        // 中文注释: 参见下一行代码含义
+        
         })
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn try_apply_block_fees(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         account_balance: &mut AccountBalanceState,
-        // 中文注释: 参见下一行代码含义
+        
         block_txn_fees: &TxnFee,
-        // 中文注释: 参见下一行代码含义
+        
         eth_address: &Address,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<(), BlockPolicyError> {
-        // 中文注释: 参见下一行代码含义
+        
         let tfm_enabled = self
-            // 中文注释: 参见下一行代码含义
+            
             .execution_chain_revision
-            // 中文注释: 参见下一行代码含义
+            
             .execution_chain_params()
-            // 中文注释: 参见下一行代码含义
+            
             .tfm_enabled;
-        // 中文注释: 参见下一行代码含义
+        
         let max_reserve_balance =
-            // 中文注释: 参见下一行代码含义
+            
             Balance::from(self.chain_revision.chain_params().max_reserve_balance);
 
-        // 中文注释: 参见下一行代码含义
+        
         if !tfm_enabled {
-            // 中文注释: 参见下一行代码含义
+            
             if account_balance.balance < block_txn_fees.max_txn_cost {
-                // 中文注释: 参见下一行代码含义
+                
                 trace!(
-                    // 中文注释: 参见下一行代码含义
+                    
                     seq_num =?self.block_seq_num,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?account_balance,
-                    // 中文注释: 参见下一行代码含义
+                    
                     block_txn_cost =?block_txn_fees.max_txn_cost,
-                    // 中文注释: 参见下一行代码含义
+                    
                     "TFM disabled. block can not be accepted insufficient balance"
-                // 中文注释: 参见下一行代码含义
+                
                 );
-                // 中文注释: 参见下一行代码含义
+                
                 return Err(BlockPolicyError::BlockPolicyBlockValidatorError(
-                    // 中文注释: 参见下一行代码含义
+                    
                     BlockPolicyBlockValidatorError::InsufficientBalance,
-                // 中文注释: 参见下一行代码含义
+                
                 ));
-            // 中文注释: 参见下一行代码含义
+            
             }
 
-            // 中文注释: 参见下一行代码含义
+            
             let estimated_balance = account_balance
-                // 中文注释: 参见下一行代码含义
+                
                 .balance
-                // 中文注释: 参见下一行代码含义
+                
                 .saturating_sub(block_txn_fees.max_txn_cost);
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.remaining_reserve_balance = estimated_balance.min(max_reserve_balance);
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.balance = estimated_balance;
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.block_seqnum_of_latest_txn = self.block_seq_num;
 
-            // 中文注释: 参见下一行代码含义
+            
             trace!(
-                // 中文注释: 参见下一行代码含义
+                
                 "TFM disabled updated balance: {:?} \
-                        // 中文注释: 参见下一行代码含义
+                        
                         txn max cost {:?} \
-                        // 中文注释: 参见下一行代码含义
+                        
                         block seq_num {:?} \
-                        // 中文注释: 参见下一行代码含义
+                        
                         address: {:?}",
-                // 中文注释: 参见下一行代码含义
+                
                 account_balance,
-                // 中文注释: 参见下一行代码含义
+                
                 block_txn_fees.max_txn_cost,
-                // 中文注释: 参见下一行代码含义
+                
                 self.block_seq_num,
-                // 中文注释: 参见下一行代码含义
+                
                 eth_address,
-            // 中文注释: 参见下一行代码含义
+            
             );
-            // 中文注释: 参见下一行代码含义
+            
             return Ok(());
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         let has_emptying_transaction = is_possibly_emptying_transaction(
-            // 中文注释: 参见下一行代码含义
+            
             self.block_seq_num,
-            // 中文注释: 参见下一行代码含义
+            
             account_balance,
-            // 中文注释: 参见下一行代码含义
+            
             self.execution_delay,
-        // 中文注释: 参见下一行代码含义
+        
         );
 
-        // 中文注释: 参见下一行代码含义
+        
         let mut block_gas_cost = block_txn_fees.max_gas_cost;
-        // 中文注释: 参见下一行代码含义
+        
         if has_emptying_transaction {
-            // 中文注释: 参见下一行代码含义
+            
             if account_balance.balance < block_txn_fees.first_txn_gas {
-                // 中文注释: 参见下一行代码含义
+                
                 trace!(
-                    // 中文注释: 参见下一行代码含义
+                    
                     "Block with insufficient balance: {:?} \
-                            // 中文注释: 参见下一行代码含义
+                            
                             first txn value {:?} \
-                            // 中文注释: 参见下一行代码含义
+                            
                             first txn gas {:?} \
-                            // 中文注释: 参见下一行代码含义
+                            
                             block seq_num {:?} \
-                            // 中文注释: 参见下一行代码含义
+                            
                             address: {:?}",
-                    // 中文注释: 参见下一行代码含义
+                    
                     account_balance,
-                    // 中文注释: 参见下一行代码含义
+                    
                     block_txn_fees.first_txn_value,
-                    // 中文注释: 参见下一行代码含义
+                    
                     block_txn_fees.first_txn_gas,
-                    // 中文注释: 参见下一行代码含义
+                    
                     self.block_seq_num,
-                    // 中文注释: 参见下一行代码含义
+                    
                     eth_address,
-                // 中文注释: 参见下一行代码含义
+                
                 );
-                // 中文注释: 参见下一行代码含义
+                
                 return Err(BlockPolicyError::BlockPolicyBlockValidatorError(
-                    // 中文注释: 参见下一行代码含义
+                    
                     BlockPolicyBlockValidatorError::InsufficientBalance,
-                // 中文注释: 参见下一行代码含义
+                
                 ));
-            // 中文注释: 参见下一行代码含义
+            
             }
-            // 中文注释: 参见下一行代码含义
+            
             let first_txn_cost = block_txn_fees
-                // 中文注释: 参见下一行代码含义
+                
                 .first_txn_value
-                // 中文注释: 参见下一行代码含义
+                
                 .saturating_add(block_txn_fees.first_txn_gas);
-            // 中文注释: 参见下一行代码含义
+            
             let estimated_balance = account_balance.balance.saturating_sub(first_txn_cost);
 
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.remaining_reserve_balance = estimated_balance.min(max_reserve_balance);
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.balance = estimated_balance;
 
-            // 中文注释: 参见下一行代码含义
+            
             trace!(
-                // 中文注释: 参见下一行代码含义
+                
                 "Block has emptying txn. updated balance: {:?} \
-                        // 中文注释: 参见下一行代码含义
+                        
                         first txn value {:?} \
-                        // 中文注释: 参见下一行代码含义
+                        
                         first txn gas {:?} \
-                        // 中文注释: 参见下一行代码含义
+                        
                         block seq_num {:?} \
-                        // 中文注释: 参见下一行代码含义
+                        
                         address: {:?}",
-                // 中文注释: 参见下一行代码含义
+                
                 account_balance,
-                // 中文注释: 参见下一行代码含义
+                
                 block_txn_fees.first_txn_value,
-                // 中文注释: 参见下一行代码含义
+                
                 block_txn_fees.first_txn_gas,
-                // 中文注释: 参见下一行代码含义
+                
                 self.block_seq_num,
-                // 中文注释: 参见下一行代码含义
+                
                 eth_address,
-            // 中文注释: 参见下一行代码含义
+            
             );
-        // 中文注释: 参见下一行代码含义
+        
         } else {
-            // 中文注释: 参见下一行代码含义
+            
             block_gas_cost = block_txn_fees
-                // 中文注释: 参见下一行代码含义
+                
                 .max_gas_cost
-                // 中文注释: 参见下一行代码含义
+                
                 .saturating_add(block_txn_fees.first_txn_gas);
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         if account_balance.remaining_reserve_balance < block_gas_cost {
-            // 中文注释: 参见下一行代码含义
+            
             trace!(
-                // 中文注释: 参见下一行代码含义
+                
                 "Block with insufficient reserve balance: {:?} \
-                            // 中文注释: 参见下一行代码含义
+                            
                             max gas cost {:?} \
-                            // 中文注释: 参见下一行代码含义
+                            
                             block seq_num {:?} \
-                            // 中文注释: 参见下一行代码含义
+                            
                             address: {:?}",
-                // 中文注释: 参见下一行代码含义
+                
                 account_balance,
-                // 中文注释: 参见下一行代码含义
+                
                 block_gas_cost,
-                // 中文注释: 参见下一行代码含义
+                
                 self.block_seq_num,
-                // 中文注释: 参见下一行代码含义
+                
                 eth_address,
-            // 中文注释: 参见下一行代码含义
+            
             );
-            // 中文注释: 参见下一行代码含义
+            
             return Err(BlockPolicyError::BlockPolicyBlockValidatorError(
-                // 中文注释: 参见下一行代码含义
+                
                 BlockPolicyBlockValidatorError::InsufficientReserveBalance,
-            // 中文注释: 参见下一行代码含义
+            
             ));
-        // 中文注释: 参见下一行代码含义
+        
         }
-        // 中文注释: 参见下一行代码含义
+        
         account_balance.remaining_reserve_balance = account_balance
-            // 中文注释: 参见下一行代码含义
+            
             .remaining_reserve_balance
-            // 中文注释: 参见下一行代码含义
+            
             .saturating_sub(block_gas_cost);
-        // 中文注释: 参见下一行代码含义
+        
         account_balance.block_seqnum_of_latest_txn = self.block_seq_num;
-        // 中文注释: 参见下一行代码含义
+        
         account_balance.is_delegated |= block_txn_fees.is_delegated;
 
-        // 中文注释: 参见下一行代码含义
+        
         trace!(
-            // 中文注释: 参见下一行代码含义
+            
             ?account_balance,
-            // 中文注释: 参见下一行代码含义
+            
             ?self.block_seq_num,
-            // 中文注释: 参见下一行代码含义
+            
             ?eth_address,
-            // 中文注释: 参见下一行代码含义
+            
             "try_apply_block_fees updated balance state",
-        // 中文注释: 参见下一行代码含义
+        
         );
-        // 中文注释: 参见下一行代码含义
+        
         Ok(())
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn try_add_transaction(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         account_balances: &mut BTreeMap<&Address, AccountBalanceState>,
-        // 中文注释: 参见下一行代码含义
+        
         txn: &Self::Transaction,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<(), BlockPolicyError> {
-        // 中文注释: 参见下一行代码含义
+        
         let eth_address = txn.signer();
 
-        // 中文注释: 参见下一行代码含义
+        
         let maybe_account_balance = account_balances.get_mut(&eth_address);
 
-        // 中文注释: 参见下一行代码含义
+        
         let Some(account_balance) = maybe_account_balance else {
-            // 中文注释: 参见下一行代码含义
+            
             warn!(
-                // 中文注释: 参见下一行代码含义
+                
                 seq_num =?self.block_seq_num,
-                // 中文注释: 参见下一行代码含义
+                
                 ?eth_address,
-                // 中文注释: 参见下一行代码含义
+                
                 "account balance have not been populated"
-            // 中文注释: 参见下一行代码含义
+            
             );
-            // 中文注释: 参见下一行代码含义
+            
             return Err(BlockPolicyError::BlockPolicyBlockValidatorError(
-                // 中文注释: 参见下一行代码含义
+                
                 BlockPolicyBlockValidatorError::AccountBalanceMissing,
-            // 中文注释: 参见下一行代码含义
+            
             ));
-        // 中文注释: 参见下一行代码含义
+        
         };
 
-        // 中文注释: 参见下一行代码含义
+        
         if !self
-            // 中文注释: 参见下一行代码含义
+            
             .execution_chain_revision
-            // 中文注释: 参见下一行代码含义
+            
             .execution_chain_params()
-            // 中文注释: 参见下一行代码含义
+            
             .tfm_enabled
-        // 中文注释: 参见下一行代码含义
+        
         {
-            // 中文注释: 参见下一行代码含义
+            
             let txn_cost = pre_tfm_compute_max_txn_cost(txn);
-            // 中文注释: 参见下一行代码含义
+            
             if account_balance.balance < txn_cost {
-                // 中文注释: 参见下一行代码含义
+                
                 trace!(
-                    // 中文注释: 参见下一行代码含义
+                    
                     seq_num =?self.block_seq_num,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?account_balance,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?txn_cost,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?txn,
-                    // 中文注释: 参见下一行代码含义
+                    
                     "TFM disabled. txn can not be accepted insufficient balance"
-                // 中文注释: 参见下一行代码含义
+                
                 );
-                // 中文注释: 参见下一行代码含义
+                
                 return Err(BlockPolicyError::BlockPolicyBlockValidatorError(
-                    // 中文注释: 参见下一行代码含义
+                    
                     BlockPolicyBlockValidatorError::InsufficientBalance,
-                // 中文注释: 参见下一行代码含义
+                
                 ));
-            // 中文注释: 参见下一行代码含义
+            
             }
 
-            // 中文注释: 参见下一行代码含义
+            
             let estimated_balance = account_balance.balance.saturating_sub(txn_cost);
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.remaining_reserve_balance =
-                // 中文注释: 参见下一行代码含义
+                
                 estimated_balance.min(account_balance.max_reserve_balance);
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.balance = estimated_balance;
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.block_seqnum_of_latest_txn = self.block_seq_num;
 
-            // 中文注释: 参见下一行代码含义
+            
             trace!(
-                // 中文注释: 参见下一行代码含义
+                
                 "TFM disabled. updated balance: {:?} \
-                        // 中文注释: 参见下一行代码含义
+                        
                         txn cost {:?} \
-                        // 中文注释: 参见下一行代码含义
+                        
                         block seq_num {:?} \
-                        // 中文注释: 参见下一行代码含义
+                        
                         address: {:?}",
-                // 中文注释: 参见下一行代码含义
+                
                 account_balance,
-                // 中文注释: 参见下一行代码含义
+                
                 txn_cost,
-                // 中文注释: 参见下一行代码含义
+                
                 self.block_seq_num,
-                // 中文注释: 参见下一行代码含义
+                
                 eth_address,
-            // 中文注释: 参见下一行代码含义
+            
             );
-            // 中文注释: 参见下一行代码含义
+            
             return Ok(());
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         let is_emptying_transaction = is_possibly_emptying_transaction(
-            // 中文注释: 参见下一行代码含义
+            
             self.block_seq_num,
-            // 中文注释: 参见下一行代码含义
+            
             account_balance,
-            // 中文注释: 参见下一行代码含义
+            
             self.execution_delay,
-        // 中文注释: 参见下一行代码含义
+        
         );
 
         // if an account for txn T is not delegated and has no prior txns, then T can charge into reserve.
-        // 中文注释: 参见下一行代码含义
+        
         if is_emptying_transaction {
-            // 中文注释: 参见下一行代码含义
+            
             let txn_max_gas = compute_txn_max_gas_cost(txn, self.base_fee);
-            // 中文注释: 参见下一行代码含义
+            
             if account_balance.balance < txn_max_gas {
-                // 中文注释: 参见下一行代码含义
+                
                 trace!(
-                    // 中文注释: 参见下一行代码含义
+                    
                     seq_num =?self.block_seq_num,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?account_balance,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?txn_max_gas,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?txn,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?is_emptying_transaction,
-                    // 中文注释: 参见下一行代码含义
+                    
                     "Emptying txn can not be accepted insufficient reserve balance"
-                // 中文注释: 参见下一行代码含义
+                
                 );
-                // 中文注释: 参见下一行代码含义
+                
                 return Err(BlockPolicyError::BlockPolicyBlockValidatorError(
-                    // 中文注释: 参见下一行代码含义
+                    
                     BlockPolicyBlockValidatorError::InsufficientBalance,
-                // 中文注释: 参见下一行代码含义
+                
                 ));
-            // 中文注释: 参见下一行代码含义
+            
             }
 
-            // 中文注释: 参见下一行代码含义
+            
             let txn_max_cost = compute_txn_max_value(txn, self.base_fee);
-            // 中文注释: 参见下一行代码含义
+            
             let estimated_balance = account_balance.balance.saturating_sub(txn_max_cost);
-            // 中文注释: 参见下一行代码含义
+            
             let reserve_balance = account_balance.max_reserve_balance.min(estimated_balance);
 
-            // 中文注释: 参见下一行代码含义
+            
             trace!(
-                // 中文注释: 参见下一行代码含义
+                
                 "New emptying txn. balance: {:?} \
-                    // 中文注释: 参见下一行代码含义
+                    
                     txn_max_cost {:?} \
-                    // 中文注释: 参见下一行代码含义
+                    
                     txn_max_gas {:?} \
-                    // 中文注释: 参见下一行代码含义
+                    
                     estimated_balance {:?} \
-                    // 中文注释: 参见下一行代码含义
+                    
                     new reserve balance {:?} \
-                    // 中文注释: 参见下一行代码含义
+                    
                     block seq_num {:?} \
-                    // 中文注释: 参见下一行代码含义
+                    
                     address: {:?}",
-                // 中文注释: 参见下一行代码含义
+                
                 account_balance,
-                // 中文注释: 参见下一行代码含义
+                
                 txn_max_cost,
-                // 中文注释: 参见下一行代码含义
+                
                 txn_max_gas,
-                // 中文注释: 参见下一行代码含义
+                
                 estimated_balance,
-                // 中文注释: 参见下一行代码含义
+                
                 reserve_balance,
-                // 中文注释: 参见下一行代码含义
+                
                 self.block_seq_num,
-                // 中文注释: 参见下一行代码含义
+                
                 eth_address,
-            // 中文注释: 参见下一行代码含义
+            
             );
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.balance = estimated_balance;
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.remaining_reserve_balance = reserve_balance;
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.block_seqnum_of_latest_txn = self.block_seq_num;
-        // 中文注释: 参见下一行代码含义
+        
         } else {
-            // 中文注释: 参见下一行代码含义
+            
             let txn_max_gas = compute_txn_max_gas_cost(txn, self.base_fee);
-            // 中文注释: 参见下一行代码含义
+            
             if account_balance.remaining_reserve_balance < txn_max_gas {
-                // 中文注释: 参见下一行代码含义
+                
                 trace!(
-                    // 中文注释: 参见下一行代码含义
+                    
                     seq_num =?self.block_seq_num,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?account_balance,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?txn_max_gas,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?txn,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?is_emptying_transaction,
-                    // 中文注释: 参见下一行代码含义
+                    
                     "Non-emptying txn can not be accepted insufficient reserve balance"
-                // 中文注释: 参见下一行代码含义
+                
                 );
-                // 中文注释: 参见下一行代码含义
+                
                 return Err(BlockPolicyError::BlockPolicyBlockValidatorError(
-                    // 中文注释: 参见下一行代码含义
+                    
                     BlockPolicyBlockValidatorError::InsufficientReserveBalance,
-                // 中文注释: 参见下一行代码含义
+                
                 ));
-            // 中文注释: 参见下一行代码含义
+            
             }
-            // 中文注释: 参见下一行代码含义
+            
             let reserve_balance = account_balance
-                // 中文注释: 参见下一行代码含义
+                
                 .remaining_reserve_balance
-                // 中文注释: 参见下一行代码含义
+                
                 .saturating_sub(txn_max_gas);
 
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.remaining_reserve_balance = reserve_balance;
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.block_seqnum_of_latest_txn = self.block_seq_num;
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         Ok(())
-    // 中文注释: 参见下一行代码含义
+    
     }
-// 中文注释: 参见下一行代码含义
+
 }
 
 /// A block policy for ethereum payloads
-// 中文注释: 参见下一行代码含义
+
 #[derive(Debug)]
-// 中文注释: 参见下一行代码含义
+
 pub struct EthBlockPolicy<ST, SCT, CCT, CRT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     ST: CertificateSignatureRecoverable,
-    // 中文注释: 参见下一行代码含义
+    
     SCT: SignatureCollection<NodeIdPubKey = CertificateSignaturePubKey<ST>>,
-// 中文注释: 参见下一行代码含义
+
 {
     /// SeqNum of last committed block
-    // 中文注释: 参见下一行代码含义
+    
     last_commit: SeqNum,
 
     // last execution-delay committed blocks
-    // 中文注释: 参见下一行代码含义
+    
     committed_cache: CommittedBlkBuffer<ST, SCT, CCT, CRT>,
 
-    // 中文注释: 参见下一行代码含义
+    
     execution_delay: SeqNum,
-// 中文注释: 参见下一行代码含义
+
 }
 
-// 中文注释: 参见下一行代码含义
+
 impl<ST, SCT, CCT, CRT> EthBlockPolicy<ST, SCT, CCT, CRT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     ST: CertificateSignatureRecoverable,
-    // 中文注释: 参见下一行代码含义
+    
     SCT: SignatureCollection<NodeIdPubKey = CertificateSignaturePubKey<ST>>,
-    // 中文注释: 参见下一行代码含义
+    
     CCT: ChainConfig<CRT>,
-    // 中文注释: 参见下一行代码含义
+    
     CRT: ChainRevision,
-// 中文注释: 参见下一行代码含义
+
 {
-    // 中文注释: 参见下一行代码含义
+    
     pub fn new(
-        // 中文注释: 参见下一行代码含义
+        
         last_commit: SeqNum, // TODO deprecate
-        // 中文注释: 参见下一行代码含义
+        
         execution_delay: u64,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Self {
-        // 中文注释: 参见下一行代码含义
+        
         let cache_max_size = execution_delay.saturating_mul(2);
-        // 中文注释: 参见下一行代码含义
+        
         Self {
             // Needs to be at least 2 * execution_delay to detect emptying transactions
-            // 中文注释: 参见下一行代码含义
+            
             committed_cache: CommittedBlkBuffer::new((cache_max_size) as usize),
-            // 中文注释: 参见下一行代码含义
+            
             last_commit,
-            // 中文注释: 参见下一行代码含义
+            
             execution_delay: SeqNum(execution_delay),
-        // 中文注释: 参见下一行代码含义
+        
         }
-    // 中文注释: 参见下一行代码含义
+    
     }
 
     /// returns account nonces at the start of the provided consensus block
-    // 中文注释: 参见下一行代码含义
+    
     pub fn get_account_base_nonces<'a>(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         consensus_block_seq_num: SeqNum,
-        // 中文注释: 参见下一行代码含义
+        
         state_backend: &impl StateBackend<ST, SCT>,
-        // 中文注释: 参见下一行代码含义
+        
         extending_blocks: &Vec<&EthValidatedBlock<ST, SCT>>,
-        // 中文注释: 参见下一行代码含义
+        
         addresses: impl Iterator<Item = &'a Address>,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<BTreeMap<&'a Address, Nonce>, StateBackendError> {
         // Layers of access
         // 1. extending_blocks: coherent blocks in the blocks tree
@@ -1391,88 +1391,88 @@ where
         // 3. LRU cache of triedb nonces
         // 4. triedb query
 
-        // 中文注释: 参见下一行代码含义
+        
         let addresses = addresses.unique().collect::<HashSet<&'a Address>>();
 
-        // 中文注释: 参见下一行代码含义
+        
         let base_seq_num = consensus_block_seq_num.max(self.execution_delay) - self.execution_delay;
 
-        // 中文注释: 参见下一行代码含义
+        
         let mut cached_nonce_usages = NonceUsageMap::default();
 
-        // 中文注释: 参见下一行代码含义
+        
         for nonce_usages in self
-            // 中文注释: 参见下一行代码含义
+            
             .committed_cache
-            // 中文注释: 参见下一行代码含义
+            
             .blocks
-            // 中文注释: 参见下一行代码含义
+            
             .iter()
-            // 中文注释: 参见下一行代码含义
+            
             .map(|(seq_num, block)| (*seq_num, &block.nonce_usages))
-            // 中文注释: 参见下一行代码含义
+            
             .chain(
-                // 中文注释: 参见下一行代码含义
+                
                 extending_blocks
-                    // 中文注释: 参见下一行代码含义
+                    
                     .iter()
-                    // 中文注释: 参见下一行代码含义
+                    
                     .map(|block| (block.get_seq_num(), &block.nonce_usages)),
-            // 中文注释: 参见下一行代码含义
+            
             )
-            // 中文注释: 参见下一行代码含义
+            
             .filter(|(seq_num, _)| *seq_num > base_seq_num)
-            // 中文注释: 参见下一行代码含义
+            
             .rev()
-            // 中文注释: 参见下一行代码含义
+            
             .map(|(_, nonce_usages)| {
-                // 中文注释: 参见下一行代码含义
+                
                 nonce_usages
-                    // 中文注释: 参见下一行代码含义
+                    
                     .map
-                    // 中文注释: 参见下一行代码含义
+                    
                     .iter()
-                    // 中文注释: 参见下一行代码含义
+                    
                     .filter(|(address, _)| addresses.contains(address))
-            // 中文注释: 参见下一行代码含义
+            
             })
-        // 中文注释: 参见下一行代码含义
+        
         {
-            // 中文注释: 参见下一行代码含义
+            
             cached_nonce_usages.merge_with_previous_block(nonce_usages);
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         let mut account_nonces = BTreeMap::default();
-        // 中文注释: 参见下一行代码含义
+        
         let mut cache_misses = Vec::new();
 
-        // 中文注释: 参见下一行代码含义
+        
         for address in addresses {
-            // 中文注释: 参见下一行代码含义
+            
             match cached_nonce_usages.get(address) {
-                // 中文注释: 参见下一行代码含义
+                
                 Some(NonceUsage::Known(nonce)) => {
-                    // 中文注释: 参见下一行代码含义
+                    
                     account_nonces.insert(address, *nonce + 1);
-                // 中文注释: 参见下一行代码含义
+                
                 }
-                // 中文注释: 参见下一行代码含义
+                
                 Some(NonceUsage::Possible(possible)) => {
-                    // 中文注释: 参见下一行代码含义
+                    
                     cache_misses.push((address, Some(possible)));
-                // 中文注释: 参见下一行代码含义
+                
                 }
-                // 中文注释: 参见下一行代码含义
+                
                 None => {
-                    // 中文注释: 参见下一行代码含义
+                    
                     cache_misses.push((address, None));
-                // 中文注释: 参见下一行代码含义
+                
                 }
-            // 中文注释: 参见下一行代码含义
+            
             }
-        // 中文注释: 参见下一行代码含义
+        
         }
 
         // the cached account nonce must overlap with latest triedb, i.e.
@@ -1480,583 +1480,583 @@ where
         // the cache should keep track of block number for the nonce state
         // when purging, we never purge nonces newer than last_commit - delay
 
-        // 中文注释: 参见下一行代码含义
+        
         let cache_miss_statuses = self.get_account_statuses(
-            // 中文注释: 参见下一行代码含义
+            
             state_backend,
-            // 中文注释: 参见下一行代码含义
+            
             &Some(extending_blocks),
-            // 中文注释: 参见下一行代码含义
+            
             cache_misses.iter().map(|(address, _)| *address),
-            // 中文注释: 参见下一行代码含义
+            
             &base_seq_num,
-        // 中文注释: 参见下一行代码含义
+        
         )?;
 
-        // 中文注释: 参见下一行代码含义
+        
         account_nonces.extend(cache_misses.into_iter().zip_eq(cache_miss_statuses).map(
-            // 中文注释: 参见下一行代码含义
+            
             |((address, possible_nonces), status)| {
-                // 中文注释: 参见下一行代码含义
+                
                 let nonce = status.map_or(0, |status| status.nonce);
 
-                // 中文注释: 参见下一行代码含义
+                
                 (
-                    // 中文注释: 参见下一行代码含义
+                    
                     address,
-                    // 中文注释: 参见下一行代码含义
+                    
                     possible_nonces.map_or(nonce, |possible_nonces| {
-                        // 中文注释: 参见下一行代码含义
+                        
                         NonceUsage::apply_possible_nonces_to_account_nonce(nonce, possible_nonces)
-                    // 中文注释: 参见下一行代码含义
+                    
                     }),
-                // 中文注释: 参见下一行代码含义
+                
                 )
-            // 中文注释: 参见下一行代码含义
+            
             },
-        // 中文注释: 参见下一行代码含义
+        
         ));
 
-        // 中文注释: 参见下一行代码含义
+        
         Ok(account_nonces)
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     pub fn get_last_commit(&self) -> SeqNum {
-        // 中文注释: 参见下一行代码含义
+        
         self.last_commit
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     pub fn get_last_commit_epoch(&self) -> Epoch {
-        // 中文注释: 参见下一行代码含义
+        
         if self.last_commit == GENESIS_SEQ_NUM {
-            // 中文注释: 参见下一行代码含义
+            
             Epoch(1)
-        // 中文注释: 参见下一行代码含义
+        
         } else {
-            // 中文注释: 参见下一行代码含义
+            
             self.committed_cache
-                // 中文注释: 参见下一行代码含义
+                
                 .get_epoch(self.last_commit)
-                // 中文注释: 参见下一行代码含义
+                
                 .expect("last committed block in committed cache")
-        // 中文注释: 参见下一行代码含义
+        
         }
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn get_block_index(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         extending_blocks: &Option<&Vec<&EthValidatedBlock<ST, SCT>>>,
-        // 中文注释: 参见下一行代码含义
+        
         base_seq_num: &SeqNum,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<BlockLookupIndex, StateBackendError> {
-        // 中文注释: 参见下一行代码含义
+        
         if base_seq_num <= &self.last_commit {
-            // 中文注释: 参见下一行代码含义
+            
             if base_seq_num == &GENESIS_SEQ_NUM {
-                // 中文注释: 参见下一行代码含义
+                
                 Ok(BlockLookupIndex {
-                    // 中文注释: 参见下一行代码含义
+                    
                     block_id: GENESIS_BLOCK_ID,
-                    // 中文注释: 参见下一行代码含义
+                    
                     seq_num: GENESIS_SEQ_NUM,
-                    // 中文注释: 参见下一行代码含义
+                    
                     round: GENESIS_ROUND,
-                    // 中文注释: 参见下一行代码含义
+                    
                     is_finalized: true,
-                // 中文注释: 参见下一行代码含义
+                
                 })
-            // 中文注释: 参见下一行代码含义
+            
             } else {
-                // 中文注释: 参见下一行代码含义
+                
                 let committed_block = &self
-                    // 中文注释: 参见下一行代码含义
+                    
                     .committed_cache
-                    // 中文注释: 参见下一行代码含义
+                    
                     .blocks
-                    // 中文注释: 参见下一行代码含义
+                    
                     .get(base_seq_num)
-                    // 中文注释: 参见下一行代码含义
+                    
                     .unwrap_or_else(|| panic!("queried recently committed block that doesn't exist, base_seq_num={:?}, last_commit={:?}", base_seq_num, self.last_commit));
-                // 中文注释: 参见下一行代码含义
+                
                 Ok(BlockLookupIndex {
-                    // 中文注释: 参见下一行代码含义
+                    
                     block_id: committed_block.block_id,
-                    // 中文注释: 参见下一行代码含义
+                    
                     seq_num: *base_seq_num,
-                    // 中文注释: 参见下一行代码含义
+                    
                     round: committed_block.round,
-                    // 中文注释: 参见下一行代码含义
+                    
                     is_finalized: true,
-                // 中文注释: 参见下一行代码含义
+                
                 })
-            // 中文注释: 参见下一行代码含义
+            
             }
-        // 中文注释: 参见下一行代码含义
+        
         } else if let Some(extending_blocks) = extending_blocks {
-            // 中文注释: 参见下一行代码含义
+            
             let proposed_block = extending_blocks
-                // 中文注释: 参见下一行代码含义
+                
                 .iter()
-                // 中文注释: 参见下一行代码含义
+                
                 .find(|block| &block.get_seq_num() == base_seq_num)
-                // 中文注释: 参见下一行代码含义
+                
                 .expect("extending block doesn't exist");
-            // 中文注释: 参见下一行代码含义
+            
             Ok(BlockLookupIndex {
-                // 中文注释: 参见下一行代码含义
+                
                 block_id: proposed_block.get_id(),
-                // 中文注释: 参见下一行代码含义
+                
                 seq_num: *base_seq_num,
-                // 中文注释: 参见下一行代码含义
+                
                 round: proposed_block.get_block_round(),
-                // 中文注释: 参见下一行代码含义
+                
                 is_finalized: false,
-            // 中文注释: 参见下一行代码含义
+            
             })
-        // 中文注释: 参见下一行代码含义
+        
         } else {
-            // 中文注释: 参见下一行代码含义
+            
             Err(StateBackendError::NotAvailableYet)
-        // 中文注释: 参见下一行代码含义
+        
         }
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn get_account_statuses<'a>(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         state_backend: &impl StateBackend<ST, SCT>,
-        // 中文注释: 参见下一行代码含义
+        
         extending_blocks: &Option<&Vec<&EthValidatedBlock<ST, SCT>>>,
-        // 中文注释: 参见下一行代码含义
+        
         addresses: impl Iterator<Item = &'a Address>,
-        // 中文注释: 参见下一行代码含义
+        
         base_seq_num: &SeqNum,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<Vec<Option<EthAccount>>, StateBackendError> {
-        // 中文注释: 参见下一行代码含义
+        
         let block_index = self.get_block_index(extending_blocks, base_seq_num)?;
-        // 中文注释: 参见下一行代码含义
+        
         state_backend.get_account_statuses(
-            // 中文注释: 参见下一行代码含义
+            
             &block_index.block_id,
-            // 中文注释: 参见下一行代码含义
+            
             base_seq_num,
-            // 中文注释: 参见下一行代码含义
+            
             block_index.is_finalized,
-            // 中文注释: 参见下一行代码含义
+            
             addresses,
-        // 中文注释: 参见下一行代码含义
+        
         )
-    // 中文注释: 参见下一行代码含义
+    
     }
 
     // Computes account balance available for the account
-    // 中文注释: 参见下一行代码含义
+    
     pub fn compute_account_base_balances<'a>(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         consensus_block_seq_num: SeqNum,
-        // 中文注释: 参见下一行代码含义
+        
         state_backend: &impl StateBackend<ST, SCT>,
-        // 中文注释: 参见下一行代码含义
+        
         chain_config: &CCT,
-        // 中文注释: 参见下一行代码含义
+        
         extending_blocks: Option<&Vec<&EthValidatedBlock<ST, SCT>>>,
-        // 中文注释: 参见下一行代码含义
+        
         addresses: impl Iterator<Item = &'a Address>,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<BTreeMap<&'a Address, AccountBalanceState>, BlockPolicyError>
-    // 中文注释: 参见下一行代码含义
+    
     where
-        // 中文注释: 参见下一行代码含义
+        
         SCT: SignatureCollection,
-    // 中文注释: 参见下一行代码含义
+    
     {
         // calculation correct only if GENESIS_SEQ_NUM == 0
-        // 中文注释: 参见下一行代码含义
+        
         assert_eq!(GENESIS_SEQ_NUM, SeqNum(0));
-        // 中文注释: 参见下一行代码含义
+        
         let base_seq_num = consensus_block_seq_num.max(self.execution_delay) - self.execution_delay;
 
-        // 中文注释: 参见下一行代码含义
+        
         let block_index = self.get_block_index(&extending_blocks, &base_seq_num)?;
-        // 中文注释: 参见下一行代码含义
+        
         let base_max_reserve_balance = Balance::from(
-            // 中文注释: 参见下一行代码含义
+            
             chain_config
-                // 中文注释: 参见下一行代码含义
+                
                 .get_chain_revision(block_index.round)
-                // 中文注释: 参见下一行代码含义
+                
                 .chain_params()
-                // 中文注释: 参见下一行代码含义
+                
                 .max_reserve_balance,
-        // 中文注释: 参见下一行代码含义
+        
         );
 
-        // 中文注释: 参见下一行代码含义
+        
         let addresses = addresses.unique().collect_vec();
-        // 中文注释: 参见下一行代码含义
+        
         let account_balances = self
-            // 中文注释: 参见下一行代码含义
+            
             .get_account_statuses(
-                // 中文注释: 参见下一行代码含义
+                
                 state_backend,
-                // 中文注释: 参见下一行代码含义
+                
                 &extending_blocks,
-                // 中文注释: 参见下一行代码含义
+                
                 addresses.iter().copied(),
-                // 中文注释: 参见下一行代码含义
+                
                 &base_seq_num,
-            // 中文注释: 参见下一行代码含义
+            
             )?
-            // 中文注释: 参见下一行代码含义
+            
             .into_iter()
-            // 中文注释: 参见下一行代码含义
+            
             .map(|maybe_status| {
-                // 中文注释: 参见下一行代码含义
+                
                 maybe_status.map_or(
-                    // 中文注释: 参见下一行代码含义
+                    
                     AccountBalanceState::new(base_max_reserve_balance),
-                    // 中文注释: 参见下一行代码含义
+                    
                     |status| {
-                        // 中文注释: 参见下一行代码含义
+                        
                         AccountBalanceState {
-                            // 中文注释: 参见下一行代码含义
+                            
                             balance: status.balance,
-                            // 中文注释: 参见下一行代码含义
+                            
                             remaining_reserve_balance: status.balance.min(base_max_reserve_balance),
-                            // 中文注释: 参见下一行代码含义
+                            
                             max_reserve_balance: base_max_reserve_balance,
-                            // 中文注释: 参见下一行代码含义
+                            
                             block_seqnum_of_latest_txn: base_seq_num, // most pessimistic assumption
-                            // 中文注释: 参见下一行代码含义
+                            
                             is_delegated: status.is_delegated,
-                        // 中文注释: 参见下一行代码含义
+                        
                         }
-                    // 中文注释: 参见下一行代码含义
+                    
                     },
-                // 中文注释: 参见下一行代码含义
+                
                 )
-            // 中文注释: 参见下一行代码含义
+            
             })
-            // 中文注释: 参见下一行代码含义
+            
             .collect_vec();
 
-        // 中文注释: 参见下一行代码含义
+        
         let account_balances: Result<BTreeMap<&'a Address, AccountBalanceState>, BlockPolicyError> =
-            // 中文注释: 参见下一行代码含义
+            
             addresses
-                // 中文注释: 参见下一行代码含义
+                
                 .into_iter()
-                // 中文注释: 参见下一行代码含义
+                
                 .zip_eq(account_balances)
-                // 中文注释: 参见下一行代码含义
+                
                 .map(|(address, mut balance_state)| {
                     // N - k + 1
-                    // 中文注释: 参见下一行代码含义
+                    
                     let reserve_balance_check_start = base_seq_num + SeqNum(1);
                     // N - 2k + 2
-                    // 中文注释: 参见下一行代码含义
+                    
                     let mut emptying_txn_check_start = (reserve_balance_check_start + SeqNum(1))
-                        // 中文注释: 参见下一行代码含义
+                        
                         .max(self.execution_delay)
-                        // 中文注释: 参见下一行代码含义
+                        
                         - self.execution_delay;
 
-                    // 中文注释: 参见下一行代码含义
+                    
                     if emptying_txn_check_start == GENESIS_SEQ_NUM {
-                        // 中文注释: 参见下一行代码含义
+                        
                         emptying_txn_check_start += SeqNum(1);
-                    // 中文注释: 参见下一行代码含义
+                    
                     }
 
                     // N - 2k + 2 (inclusive) to N - k + 1 (non inclusive)
-                    // 中文注释: 参见下一行代码含义
+                    
                     let emptying_txn_check_block_range =
-                        // 中文注释: 参见下一行代码含义
+                        
                         emptying_txn_check_start..reserve_balance_check_start;
                     // N - k + 1 (inclusive) to N (non inclusive)
-                    // 中文注释: 参见下一行代码含义
+                    
                     let reserve_balance_check_block_range = reserve_balance_check_start..;
 
-                    // 中文注释: 参见下一行代码含义
+                    
                     if emptying_txn_check_start > GENESIS_SEQ_NUM {
-                        // 中文注释: 参见下一行代码含义
+                        
                         balance_state.block_seqnum_of_latest_txn =
-                            // 中文注释: 参见下一行代码含义
+                            
                             emptying_txn_check_start - SeqNum(1);
-                    // 中文注释: 参见下一行代码含义
+                    
                     }
 
                     // check for emptying txs and reserve balance in committed blocks
-                    // 中文注释: 参见下一行代码含义
+                    
                     let mut next_validate = self.committed_cache.update_account_balance(
-                        // 中文注释: 参见下一行代码含义
+                        
                         &mut balance_state,
-                        // 中文注释: 参见下一行代码含义
+                        
                         address,
-                        // 中文注释: 参见下一行代码含义
+                        
                         self.execution_delay,
-                        // 中文注释: 参见下一行代码含义
+                        
                         emptying_txn_check_block_range,
-                        // 中文注释: 参见下一行代码含义
+                        
                         reserve_balance_check_block_range,
-                        // 中文注释: 参见下一行代码含义
+                        
                         chain_config,
-                    // 中文注释: 参见下一行代码含义
+                    
                     )?;
 
                     // check for emptying txs and reserve balance in extending blocks
-                    // 中文注释: 参见下一行代码含义
+                    
                     if let Some(blocks) = extending_blocks {
                         // handle the case where base_seq_num is a pending block
-                        // 中文注释: 参见下一行代码含义
+                        
                         let next_blocks = blocks
-                            // 中文注释: 参见下一行代码含义
+                            
                             .iter()
-                            // 中文注释: 参见下一行代码含义
+                            
                             .skip_while(move |block| block.get_seq_num() < next_validate);
 
-                        // 中文注释: 参见下一行代码含义
+                        
                         for extending_block in next_blocks {
-                            // 中文注释: 参见下一行代码含义
+                            
                             assert_eq!(next_validate, extending_block.get_seq_num());
 
-                            // 中文注释: 参见下一行代码含义
+                            
                             if let Some(txn_fee) = extending_block.txn_fees.get(address) {
                                 // if still within check emptying range, update latest tx seq num
                                 // otherwise check for reserve balance
-                                // 中文注释: 参见下一行代码含义
+                                
                                 if next_validate < reserve_balance_check_start {
-                                    // 中文注释: 参见下一行代码含义
+                                    
                                     if balance_state.block_seqnum_of_latest_txn < next_validate {
-                                        // 中文注释: 参见下一行代码含义
+                                        
                                         balance_state.block_seqnum_of_latest_txn =
-                                            // 中文注释: 参见下一行代码含义
+                                            
                                             extending_block.get_seq_num();
-                                    // 中文注释: 参见下一行代码含义
+                                    
                                     }
-                                // 中文注释: 参见下一行代码含义
+                                
                                 } else {
-                                    // 中文注释: 参见下一行代码含义
+                                    
                                     let validator = EthBlockPolicyBlockValidator::new(
-                                        // 中文注释: 参见下一行代码含义
+                                        
                                         extending_block.get_seq_num(),
-                                        // 中文注释: 参见下一行代码含义
+                                        
                                         self.execution_delay,
-                                        // 中文注释: 参见下一行代码含义
+                                        
                                         extending_block
-                                            // 中文注释: 参见下一行代码含义
+                                            
                                             .get_base_fee()
-                                            // 中文注释: 参见下一行代码含义
+                                            
                                             .unwrap_or(monad_tfm::base_fee::PRE_TFM_BASE_FEE),
-                                        // 中文注释: 参见下一行代码含义
+                                        
                                         &chain_config
-                                            // 中文注释: 参见下一行代码含义
+                                            
                                             .get_chain_revision(extending_block.get_block_round()),
-                                        // 中文注释: 参见下一行代码含义
+                                        
                                         &chain_config.get_execution_chain_revision(
-                                            // 中文注释: 参见下一行代码含义
+                                            
                                             timestamp_ns_to_secs(extending_block.get_timestamp()),
-                                        // 中文注释: 参见下一行代码含义
+                                        
                                         ),
-                                    // 中文注释: 参见下一行代码含义
+                                    
                                     )?;
 
-                                    // 中文注释: 参见下一行代码含义
+                                    
                                     validator.try_apply_block_fees(
-                                        // 中文注释: 参见下一行代码含义
+                                        
                                         &mut balance_state,
-                                        // 中文注释: 参见下一行代码含义
+                                        
                                         txn_fee,
-                                        // 中文注释: 参见下一行代码含义
+                                        
                                         address,
-                                    // 中文注释: 参见下一行代码含义
+                                    
                                     )?;
-                                // 中文注释: 参见下一行代码含义
+                                
                                 }
-                            // 中文注释: 参见下一行代码含义
+                            
                             }
-                            // 中文注释: 参见下一行代码含义
+                            
                             next_validate += SeqNum(1);
-                        // 中文注释: 参见下一行代码含义
+                        
                         }
-                    // 中文注释: 参见下一行代码含义
+                    
                     }
 
-                    // 中文注释: 参见下一行代码含义
+                    
                     Ok((address, balance_state))
-                // 中文注释: 参见下一行代码含义
+                
                 })
-                // 中文注释: 参见下一行代码含义
+                
                 .collect();
-        // 中文注释: 参见下一行代码含义
+        
         account_balances
-    // 中文注释: 参见下一行代码含义
+    
     }
 
     /// return value:
     /// (parent_block_round, parent_base_fee, parent_trend, parent_moment, parent_gas_usage)
-    // 中文注释: 参见下一行代码含义
+    
     fn get_parent_base_fee_fields<B>(&self, extending_blocks: &[B]) -> (Round, u64, u64, u64, u64)
-    // 中文注释: 参见下一行代码含义
+    
     where
-        // 中文注释: 参见下一行代码含义
+        
         B: AsRef<EthValidatedBlock<ST, SCT>>,
-    // 中文注释: 参见下一行代码含义
+    
     {
         // parent block is last block in extending_blocks or last_committed
         // block if there's no extending branch
-        // 中文注释: 参见下一行代码含义
+        
         let (
-            // 中文注释: 参见下一行代码含义
+            
             parent_block_round,
-            // 中文注释: 参见下一行代码含义
+            
             maybe_parent_base_fee,
-            // 中文注释: 参见下一行代码含义
+            
             maybe_parent_trend,
-            // 中文注释: 参见下一行代码含义
+            
             maybe_parent_moment,
-            // 中文注释: 参见下一行代码含义
+            
             parent_gas_usage,
-        // 中文注释: 参见下一行代码含义
+        
         ) = if let Some(parent_block) = extending_blocks.last() {
-            // 中文注释: 参见下一行代码含义
+            
             let parent_gas_usage = parent_block
-                // 中文注释: 参见下一行代码含义
+                
                 .as_ref()
-                // 中文注释: 参见下一行代码含义
+                
                 .validated_txns
-                // 中文注释: 参见下一行代码含义
+                
                 .iter()
-                // 中文注释: 参见下一行代码含义
+                
                 .map(|txn| txn.gas_limit())
-                // 中文注释: 参见下一行代码含义
+                
                 .sum::<u64>();
-            // 中文注释: 参见下一行代码含义
+            
             (
-                // 中文注释: 参见下一行代码含义
+                
                 parent_block.as_ref().header().block_round,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_block.as_ref().header().base_fee,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_block.as_ref().header().base_fee_trend,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_block.as_ref().header().base_fee_moment,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_gas_usage,
-            // 中文注释: 参见下一行代码含义
+            
             )
-        // 中文注释: 参见下一行代码含义
+        
         } else {
             // genesis block doesn't exist in committed_cache
-            // 中文注释: 参见下一行代码含义
+            
             if self.last_commit == GENESIS_SEQ_NUM {
                 // genesis block
-                // 中文注释: 参见下一行代码含义
+                
                 (
-                    // 中文注释: 参见下一行代码含义
+                    
                     GENESIS_ROUND,
-                    // 中文注释: 参见下一行代码含义
+                    
                     Some(monad_tfm::base_fee::GENESIS_BASE_FEE),
-                    // 中文注释: 参见下一行代码含义
+                    
                     Some(monad_tfm::base_fee::GENESIS_BASE_FEE_TREND),
-                    // 中文注释: 参见下一行代码含义
+                    
                     Some(monad_tfm::base_fee::GENESIS_BASE_FEE_MOMENT),
-                    // 中文注释: 参见下一行代码含义
+                    
                     0,
-                // 中文注释: 参见下一行代码含义
+                
                 )
-            // 中文注释: 参见下一行代码含义
+            
             } else {
-                // 中文注释: 参见下一行代码含义
+                
                 let parent_block = self
-                    // 中文注释: 参见下一行代码含义
+                    
                     .committed_cache
-                    // 中文注释: 参见下一行代码含义
+                    
                     .blocks
-                    // 中文注释: 参见下一行代码含义
+                    
                     .get(&self.last_commit)
-                    // 中文注释: 参见下一行代码含义
+                    
                     .expect("last committed block must exist");
-                // 中文注释: 参见下一行代码含义
+                
                 (
-                    // 中文注释: 参见下一行代码含义
+                    
                     parent_block.round,
-                    // 中文注释: 参见下一行代码含义
+                    
                     parent_block.base_fee,
-                    // 中文注释: 参见下一行代码含义
+                    
                     parent_block.base_fee_trend,
-                    // 中文注释: 参见下一行代码含义
+                    
                     parent_block.base_fee_moment,
-                    // 中文注释: 参见下一行代码含义
+                    
                     parent_block.block_gas_usage,
-                // 中文注释: 参见下一行代码含义
+                
                 )
-            // 中文注释: 参见下一行代码含义
+            
             }
-        // 中文注释: 参见下一行代码含义
+        
         };
 
         // if parent block doesn't have base_fee fields, it must be pre-tfm
         // block and we return genesis values
-        // 中文注释: 参见下一行代码含义
+        
         let (parent_base_fee, parent_trend, parent_moment) = match (
-            // 中文注释: 参见下一行代码含义
+            
             maybe_parent_base_fee,
-            // 中文注释: 参见下一行代码含义
+            
             maybe_parent_trend,
-            // 中文注释: 参见下一行代码含义
+            
             maybe_parent_moment,
-        // 中文注释: 参见下一行代码含义
+        
         ) {
-            // 中文注释: 参见下一行代码含义
+            
             (Some(parent_base_fee), Some(parent_trend), Some(parent_moment)) => {
-                // 中文注释: 参见下一行代码含义
+                
                 (parent_base_fee, parent_trend, parent_moment)
-            // 中文注释: 参见下一行代码含义
+            
             }
-            // 中文注释: 参见下一行代码含义
+            
             _ => (
-                // 中文注释: 参见下一行代码含义
+                
                 monad_tfm::base_fee::GENESIS_BASE_FEE,
-                // 中文注释: 参见下一行代码含义
+                
                 monad_tfm::base_fee::GENESIS_BASE_FEE_TREND,
-                // 中文注释: 参见下一行代码含义
+                
                 monad_tfm::base_fee::GENESIS_BASE_FEE_MOMENT,
-            // 中文注释: 参见下一行代码含义
+            
             ),
-        // 中文注释: 参见下一行代码含义
+        
         };
 
-        // 中文注释: 参见下一行代码含义
+        
         (
-            // 中文注释: 参见下一行代码含义
+            
             parent_block_round,
-            // 中文注释: 参见下一行代码含义
+            
             parent_base_fee,
-            // 中文注释: 参见下一行代码含义
+            
             parent_trend,
-            // 中文注释: 参见下一行代码含义
+            
             parent_moment,
-            // 中文注释: 参见下一行代码含义
+            
             parent_gas_usage,
-        // 中文注释: 参见下一行代码含义
+        
         )
-    // 中文注释: 参见下一行代码含义
+    
     }
 
     /// compute the base fee according to tfm rules
@@ -2064,672 +2064,672 @@ where
     /// return value: (base_fee, base_fee_trend, base_fee_moment)
     ///
     /// base_fee unit: MON-wei
-    // 中文注释: 参见下一行代码含义
+    
     pub fn compute_base_fee<B>(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         extending_blocks: &[B],
-        // 中文注释: 参见下一行代码含义
+        
         chain_config: &CCT,
-        // 中文注释: 参见下一行代码含义
+        
         timestamp_ns: u128,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Option<(u64, u64, u64)>
-    // 中文注释: 参见下一行代码含义
+    
     where
-        // 中文注释: 参见下一行代码含义
+        
         B: AsRef<EthValidatedBlock<ST, SCT>>,
-    // 中文注释: 参见下一行代码含义
+    
     {
-        // 中文注释: 参见下一行代码含义
+        
         let tfm_enabled = chain_config
-            // 中文注释: 参见下一行代码含义
+            
             .get_execution_chain_revision(timestamp_ns_to_secs(timestamp_ns))
-            // 中文注释: 参见下一行代码含义
+            
             .execution_chain_params()
-            // 中文注释: 参见下一行代码含义
+            
             .tfm_enabled;
-        // 中文注释: 参见下一行代码含义
+        
         if tfm_enabled {
-            // 中文注释: 参见下一行代码含义
+            
             let (
-                // 中文注释: 参见下一行代码含义
+                
                 parent_block_round,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_base_fee,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_trend,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_moment,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_gas_usage,
-            // 中文注释: 参见下一行代码含义
+            
             ) = self.get_parent_base_fee_fields(extending_blocks);
-            // 中文注释: 参见下一行代码含义
+            
             let parent_block_gas_limit = chain_config
-                // 中文注释: 参见下一行代码含义
+                
                 .get_chain_revision(parent_block_round)
-                // 中文注释: 参见下一行代码含义
+                
                 .chain_params()
-                // 中文注释: 参见下一行代码含义
+                
                 .proposal_gas_limit;
 
-            // 中文注释: 参见下一行代码含义
+            
             Some(monad_tfm::base_fee::compute_base_fee(
-                // 中文注释: 参见下一行代码含义
+                
                 parent_block_gas_limit,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_gas_usage,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_base_fee,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_trend,
-                // 中文注释: 参见下一行代码含义
+                
                 parent_moment,
-            // 中文注释: 参见下一行代码含义
+            
             ))
-        // 中文注释: 参见下一行代码含义
+        
         } else {
-            // 中文注释: 参见下一行代码含义
+            
             None
-        // 中文注释: 参见下一行代码含义
+        
         }
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     pub fn get_execution_delay(&self) -> SeqNum {
-        // 中文注释: 参见下一行代码含义
+        
         self.execution_delay
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn system_transaction_nonce_check(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         system_txns: &[SystemTransaction],
-        // 中文注释: 参见下一行代码含义
+        
         account_nonces: &mut BTreeMap<&Address, u64>,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<(), BlockPolicyError> {
-        // 中文注释: 参见下一行代码含义
+        
         for sys_txn in system_txns.iter() {
-            // 中文注释: 参见下一行代码含义
+            
             let sys_txn_signer = sys_txn.signer();
-            // 中文注释: 参见下一行代码含义
+            
             let sys_txn_nonce = sys_txn.nonce();
 
-            // 中文注释: 参见下一行代码含义
+            
             let expected_nonce = account_nonces
-                // 中文注释: 参见下一行代码含义
+                
                 .get_mut(&sys_txn_signer)
-                // 中文注释: 参见下一行代码含义
+                
                 .expect("account_nonces should have been populated");
 
-            // 中文注释: 参见下一行代码含义
+            
             if &sys_txn_nonce != expected_nonce {
-                // 中文注释: 参见下一行代码含义
+                
                 warn!(
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?sys_txn_nonce,
-                    // 中文注释: 参见下一行代码含义
+                    
                     ?expected_nonce,
-                    // 中文注释: 参见下一行代码含义
+                    
                     "block not coherent, invalid nonce for system transaction"
-                // 中文注释: 参见下一行代码含义
+                
                 );
-                // 中文注释: 参见下一行代码含义
+                
                 return Err(BlockPolicyError::BlockNotCoherent);
-            // 中文注释: 参见下一行代码含义
+            
             }
-            // 中文注释: 参见下一行代码含义
+            
             *expected_nonce += 1;
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         Ok(())
-    // 中文注释: 参见下一行代码含义
+    
     }
 
     // this function checks the validity of nonces for a regular transaction
-    // 中文注释: 参见下一行代码含义
+    
     fn nonce_check_and_update(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         txn: &Recovered<TxEnvelope>,
-        // 中文注释: 参见下一行代码含义
+        
         account_nonces: &mut BTreeMap<&Address, u64>,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<(), BlockPolicyError> {
-        // 中文注释: 参见下一行代码含义
+        
         let eth_address = txn.signer();
-        // 中文注释: 参见下一行代码含义
+        
         let txn_nonce = txn.nonce();
 
-        // 中文注释: 参见下一行代码含义
+        
         let expected_nonce = account_nonces
-            // 中文注释: 参见下一行代码含义
+            
             .get_mut(&eth_address)
-            // 中文注释: 参见下一行代码含义
+            
             .expect("account_nonces should have been populated");
 
-        // 中文注释: 参见下一行代码含义
+        
         if &txn_nonce != expected_nonce {
-            // 中文注释: 参见下一行代码含义
+            
             warn!(
-                // 中文注释: 参见下一行代码含义
+                
                 txn_nonce = ?txn_nonce,
-                // 中文注释: 参见下一行代码含义
+                
                 expected_nonce = ?expected_nonce,
-                // 中文注释: 参见下一行代码含义
+                
                 "block not coherent, invalid nonce"
-            // 中文注释: 参见下一行代码含义
+            
             );
-            // 中文注释: 参见下一行代码含义
+            
             return Err(BlockPolicyError::BlockNotCoherent);
-        // 中文注释: 参见下一行代码含义
+        
         }
-        // 中文注释: 参见下一行代码含义
+        
         *expected_nonce += 1;
 
-        // 中文注释: 参见下一行代码含义
+        
         Ok(())
-    // 中文注释: 参见下一行代码含义
+    
     }
 
     // https://eips.ethereum.org/EIPS/eip-7702#behavior
     // the nonce of authority is only incremented if the behavior checks
     // for the tuple pass
     // this function performs those checks
-    // 中文注释: 参见下一行代码含义
+    
     fn eip_7702_valid_nonce_update(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         auth_list: &[RecoveredAuthorization],
-        // 中文注释: 参见下一行代码含义
+        
         account_nonces: &mut BTreeMap<&Address, u64>,
-        // 中文注释: 参见下一行代码含义
+        
         chain_id: u64,
-    // 中文注释: 参见下一行代码含义
+    
     ) {
-        // 中文注释: 参见下一行代码含义
+        
         for (result, nonce, code_address, auth_chain_id) in auth_list
-            // 中文注释: 参见下一行代码含义
+            
             .iter()
-            // 中文注释: 参见下一行代码含义
+            
             .map(|a| (a.authority(), a.nonce(), a.address(), a.chain_id()))
-        // 中文注释: 参见下一行代码含义
+        
         {
-            // 中文注释: 参见下一行代码含义
+            
             match result {
-                // 中文注释: 参见下一行代码含义
+                
                 Some(authority) => {
-                    // 中文注释: 参见下一行代码含义
+                    
                     trace!(?code_address, ?nonce, ?authority, "Authority");
-                    // 中文注释: 参见下一行代码含义
+                    
                     if auth_chain_id != 0_u64 && auth_chain_id != chain_id {
-                        // 中文注释: 参见下一行代码含义
+                        
                         continue;
-                    // 中文注释: 参见下一行代码含义
+                    
                     }
 
-                    // 中文注释: 参见下一行代码含义
+                    
                     let expected_nonce = account_nonces
-                        // 中文注释: 参见下一行代码含义
+                        
                         .get_mut(&authority)
-                        // 中文注释: 参见下一行代码含义
+                        
                         .expect("account_nonces should have been populated");
 
-                    // 中文注释: 参见下一行代码含义
+                    
                     if *expected_nonce != nonce {
-                        // 中文注释: 参见下一行代码含义
+                        
                         trace!(
-                            // 中文注释: 参见下一行代码含义
+                            
                             ?expected_nonce,
-                            // 中文注释: 参见下一行代码含义
+                            
                             auth_tuple_nonce = nonce,
-                            // 中文注释: 参见下一行代码含义
+                            
                             ?authority,
-                            // 中文注释: 参见下一行代码含义
+                            
                             "authority nonce error"
-                        // 中文注释: 参见下一行代码含义
+                        
                         );
-                        // 中文注释: 参见下一行代码含义
+                        
                         continue;
-                    // 中文注释: 参见下一行代码含义
+                    
                     }
-                    // 中文注释: 参见下一行代码含义
+                    
                     *expected_nonce += 1;
-                // 中文注释: 参见下一行代码含义
+                
                 }
-                // 中文注释: 参见下一行代码含义
+                
                 None => {
                     // skip authorization if there is error recovering signer
-                    // 中文注释: 参见下一行代码含义
+                    
                     continue;
-                // 中文注释: 参见下一行代码含义
+                
                 }
-            // 中文注释: 参见下一行代码含义
+            
             }
-        // 中文注释: 参见下一行代码含义
+        
         }
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn extract_signers(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         validated_txns: &[ValidatedTx],
-        // 中文注释: 参见下一行代码含义
+        
         system_txns: &[SystemTransaction],
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<(HashSet<Address>, HashSet<Address>), BlockPolicyError> {
         // TODO fix this unnecessary copy into a new vec to generate an owned Address
-        // 中文注释: 参见下一行代码含义
+        
         let mut tx_signers: HashSet<Address> =
-            // 中文注释: 参见下一行代码含义
+            
             validated_txns.iter().map(|txn| txn.signer()).collect();
 
-        // 中文注释: 参见下一行代码含义
+        
         let authority_addresses: HashSet<Address> = validated_txns
-            // 中文注释: 参见下一行代码含义
+            
             .iter()
-            // 中文注释: 参见下一行代码含义
+            
             .flat_map(|txn| {
-                // 中文注释: 参见下一行代码含义
+                
                 txn.authorizations_7702
-                    // 中文注释: 参见下一行代码含义
+                    
                     .iter()
-                    // 中文注释: 参见下一行代码含义
+                    
                     .filter_map(|recovered_auth| recovered_auth.authority())
-            // 中文注释: 参见下一行代码含义
+            
             })
-            // 中文注释: 参见下一行代码含义
+            
             .collect();
 
-        // 中文注释: 参见下一行代码含义
+        
         tx_signers.extend(authority_addresses.iter().cloned());
 
-        // 中文注释: 参见下一行代码含义
+        
         let mut system_tx_signers = system_txns.iter().map(|txn| txn.signer());
-        // 中文注释: 参见下一行代码含义
+        
         tx_signers.extend(&mut system_tx_signers);
 
-        // 中文注释: 参见下一行代码含义
+        
         Ok((tx_signers, authority_addresses))
-    // 中文注释: 参见下一行代码含义
+    
     }
-// 中文注释: 参见下一行代码含义
+
 }
 
-// 中文注释: 参见下一行代码含义
+
 impl<ST, SCT, SBT, CCT, CRT> BlockPolicy<ST, SCT, EthExecutionProtocol, SBT, CCT, CRT>
-    // 中文注释: 参见下一行代码含义
+    
     for EthBlockPolicy<ST, SCT, CCT, CRT>
-// 中文注释: 参见下一行代码含义
+
 where
-    // 中文注释: 参见下一行代码含义
+    
     ST: CertificateSignatureRecoverable,
-    // 中文注释: 参见下一行代码含义
+    
     SCT: SignatureCollection<NodeIdPubKey = CertificateSignaturePubKey<ST>>,
-    // 中文注释: 参见下一行代码含义
+    
     SBT: StateBackend<ST, SCT>,
-    // 中文注释: 参见下一行代码含义
+    
     CCT: ChainConfig<CRT>,
-    // 中文注释: 参见下一行代码含义
+    
     CRT: ChainRevision,
-// 中文注释: 参见下一行代码含义
+
 {
-    // 中文注释: 参见下一行代码含义
+    
     type ValidatedBlock = EthValidatedBlock<ST, SCT>;
 
-    // 中文注释: 参见下一行代码含义
+    
     fn check_coherency(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         block: &Self::ValidatedBlock,
-        // 中文注释: 参见下一行代码含义
+        
         extending_blocks: Vec<&Self::ValidatedBlock>,
-        // 中文注释: 参见下一行代码含义
+        
         blocktree_root: RootInfo,
-        // 中文注释: 参见下一行代码含义
+        
         state_backend: &SBT,
-        // 中文注释: 参见下一行代码含义
+        
         chain_config: &CCT,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<(), BlockPolicyError> {
-        // 中文注释: 参见下一行代码含义
+        
         let chain_id = chain_config.chain_id();
 
-        // 中文注释: 参见下一行代码含义
+        
         let first_block = extending_blocks
-            // 中文注释: 参见下一行代码含义
+            
             .iter()
-            // 中文注释: 参见下一行代码含义
+            
             .chain(std::iter::once(&block))
-            // 中文注释: 参见下一行代码含义
+            
             .next()
-            // 中文注释: 参见下一行代码含义
+            
             .unwrap();
-        // 中文注释: 参见下一行代码含义
+        
         assert_eq!(first_block.get_seq_num(), self.last_commit + SeqNum(1));
 
         // check coherency against the block being extended or against the root of the blocktree if
         // there is no extending branch
-        // 中文注释: 参见下一行代码含义
+        
         let (extending_seq_num, extending_timestamp) =
-            // 中文注释: 参见下一行代码含义
+            
             if let Some(extended_block) = extending_blocks.last() {
-                // 中文注释: 参见下一行代码含义
+                
                 (extended_block.get_seq_num(), extended_block.get_timestamp())
-            // 中文注释: 参见下一行代码含义
+            
             } else {
-                // 中文注释: 参见下一行代码含义
+                
                 (blocktree_root.seq_num, 0) //TODO: add timestamp to RootInfo
-            // 中文注释: 参见下一行代码含义
+            
             };
 
-        // 中文注释: 参见下一行代码含义
+        
         if block.get_seq_num() != extending_seq_num + SeqNum(1) {
-            // 中文注释: 参见下一行代码含义
+            
             warn!(
-                // 中文注释: 参见下一行代码含义
+                
                 seq_num =? block.header().seq_num,
-                // 中文注释: 参见下一行代码含义
+                
                 round =? block.header().block_round,
-                // 中文注释: 参见下一行代码含义
+                
                 "block not coherent, doesn't equal parent_seq_num + 1"
-            // 中文注释: 参见下一行代码含义
+            
             );
-            // 中文注释: 参见下一行代码含义
+            
             return Err(BlockPolicyError::BlockNotCoherent);
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         if block.get_timestamp() <= extending_timestamp {
-            // 中文注释: 参见下一行代码含义
+            
             warn!(
-                // 中文注释: 参见下一行代码含义
+                
                 seq_num =? block.header().seq_num,
-                // 中文注释: 参见下一行代码含义
+                
                 round =? block.header().block_round,
-                // 中文注释: 参见下一行代码含义
+                
                 ?extending_timestamp,
-                // 中文注释: 参见下一行代码含义
+                
                 block_timestamp =? block.get_timestamp(),
-                // 中文注释: 参见下一行代码含义
+                
                 "block not coherent, timestamp not monotonically increasing"
-            // 中文注释: 参见下一行代码含义
+            
             );
-            // 中文注释: 参见下一行代码含义
+            
             return Err(BlockPolicyError::TimestampError);
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         let expected_execution_results = self.get_expected_execution_results(
-            // 中文注释: 参见下一行代码含义
+            
             block.get_seq_num(),
-            // 中文注释: 参见下一行代码含义
+            
             extending_blocks.clone(),
-            // 中文注释: 参见下一行代码含义
+            
             state_backend,
-        // 中文注释: 参见下一行代码含义
+        
         )?;
-        // 中文注释: 参见下一行代码含义
+        
         if block.get_execution_results() != &expected_execution_results {
-            // 中文注释: 参见下一行代码含义
+            
             warn!(
-                // 中文注释: 参见下一行代码含义
+                
                 seq_num =? block.header().seq_num,
-                // 中文注释: 参见下一行代码含义
+                
                 round =? block.header().block_round,
-                // 中文注释: 参见下一行代码含义
+                
                 ?expected_execution_results,
-                // 中文注释: 参见下一行代码含义
+                
                 block_execution_results =? block.get_execution_results(),
-                // 中文注释: 参见下一行代码含义
+                
                 "block not coherent, execution result mismatch"
-            // 中文注释: 参见下一行代码含义
+            
             );
-            // 中文注释: 参见下一行代码含义
+            
             return Err(BlockPolicyError::ExecutionResultMismatch);
-        // 中文注释: 参见下一行代码含义
+        
         }
 
         // verify base_fee fields
-        // 中文注释: 参见下一行代码含义
+        
         let maybe_tfm_base_fees =
-            // 中文注释: 参见下一行代码含义
+            
             self.compute_base_fee(&extending_blocks, chain_config, block.get_timestamp());
 
-        // 中文注释: 参见下一行代码含义
+        
         let (base_fee, base_fee_trend, base_fee_moment) = match maybe_tfm_base_fees {
-            // 中文注释: 参见下一行代码含义
+            
             Some((base_fee, base_fee_trend, base_fee_moment)) => {
-                // 中文注释: 参见下一行代码含义
+                
                 (Some(base_fee), Some(base_fee_trend), Some(base_fee_moment))
-            // 中文注释: 参见下一行代码含义
+            
             }
-            // 中文注释: 参见下一行代码含义
+            
             None => (None, None, None),
-        // 中文注释: 参见下一行代码含义
+        
         };
 
-        // 中文注释: 参见下一行代码含义
+        
         if base_fee != block.header().base_fee
-            // 中文注释: 参见下一行代码含义
+            
             || base_fee_trend != block.header().base_fee_trend
-            // 中文注释: 参见下一行代码含义
+            
             || base_fee_moment != block.header().base_fee_moment
-        // 中文注释: 参见下一行代码含义
+        
         {
-            // 中文注释: 参见下一行代码含义
+            
             warn!(
-                // 中文注释: 参见下一行代码含义
+                
                 seq_num =? block.header().seq_num,
-                // 中文注释: 参见下一行代码含义
+                
                 round =? block.header().block_round,
-                // 中文注释: 参见下一行代码含义
+                
                 expected_base_fees = ?(base_fee, base_fee_trend, base_fee_moment),
-                // 中文注释: 参见下一行代码含义
+                
                 block_base_fees = ?(block.header().base_fee, block.header().base_fee_trend, block.header().base_fee_moment),
-                // 中文注释: 参见下一行代码含义
+                
                 "block not coherent, base_fee mismatch"
-            // 中文注释: 参见下一行代码含义
+            
             );
-            // 中文注释: 参见下一行代码含义
+            
             return Err(BlockPolicyError::BaseFeeError);
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         let (tx_signers, authority_addresses) =
-            // 中文注释: 参见下一行代码含义
+            
             self.extract_signers(&block.validated_txns, &block.system_txns)?;
 
         // these must be updated as we go through txs in the block
-        // 中文注释: 参见下一行代码含义
+        
         let mut account_nonces = self.get_account_base_nonces(
-            // 中文注释: 参见下一行代码含义
+            
             block.get_seq_num(),
-            // 中文注释: 参见下一行代码含义
+            
             state_backend,
-            // 中文注释: 参见下一行代码含义
+            
             &extending_blocks,
-            // 中文注释: 参见下一行代码含义
+            
             tx_signers.iter(),
-        // 中文注释: 参见下一行代码含义
+        
         )?;
         // these must be updated as we go through txs in the block
-        // 中文注释: 参见下一行代码含义
+        
         let mut account_balances = self.compute_account_base_balances(
-            // 中文注释: 参见下一行代码含义
+            
             block.get_seq_num(),
-            // 中文注释: 参见下一行代码含义
+            
             state_backend,
-            // 中文注释: 参见下一行代码含义
+            
             chain_config,
-            // 中文注释: 参见下一行代码含义
+            
             Some(&extending_blocks),
-            // 中文注释: 参见下一行代码含义
+            
             tx_signers.iter(),
-        // 中文注释: 参见下一行代码含义
+        
         )?;
 
-        // 中文注释: 参见下一行代码含义
+        
         for authority in &authority_addresses {
-            // 中文注释: 参见下一行代码含义
+            
             let account_balance = account_balances
-                // 中文注释: 参见下一行代码含义
+                
                 .get_mut(authority)
-                // 中文注释: 参见下一行代码含义
+                
                 .expect("account_balances should have been populated for delegated accounts");
 
-            // 中文注释: 参见下一行代码含义
+            
             trace!(?authority, "Setting account to is_delegated: true");
-            // 中文注释: 参见下一行代码含义
+            
             account_balance.is_delegated = true;
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         let validator = EthBlockPolicyBlockValidator::new(
-            // 中文注释: 参见下一行代码含义
+            
             block.get_seq_num(),
-            // 中文注释: 参见下一行代码含义
+            
             self.execution_delay,
-            // 中文注释: 参见下一行代码含义
+            
             block
-                // 中文注释: 参见下一行代码含义
+                
                 .get_base_fee()
-                // 中文注释: 参见下一行代码含义
+                
                 .unwrap_or(monad_tfm::base_fee::PRE_TFM_BASE_FEE),
-            // 中文注释: 参见下一行代码含义
+            
             &chain_config.get_chain_revision(block.get_block_round()),
-            // 中文注释: 参见下一行代码含义
+            
             &chain_config.get_execution_chain_revision(timestamp_ns_to_secs(block.get_timestamp())),
-        // 中文注释: 参见下一行代码含义
+        
         )?;
 
-        // 中文注释: 参见下一行代码含义
+        
         self.system_transaction_nonce_check(&block.system_txns, &mut account_nonces)?;
 
-        // 中文注释: 参见下一行代码含义
+        
         for txn in block.validated_txns.iter() {
-            // 中文注释: 参见下一行代码含义
+            
             self.nonce_check_and_update(txn, &mut account_nonces)?;
-            // 中文注释: 参见下一行代码含义
+            
             validator.try_add_transaction(&mut account_balances, txn)?;
 
             // https://eips.ethereum.org/EIPS/eip-7702#behavior
             // "The authorization list is processed before the execution portion
             // of the transaction begins, but after the sender’s nonce is incremented."
-            // 中文注释: 参见下一行代码含义
+            
             if txn.is_eip7702() {
-                // 中文注释: 参见下一行代码含义
+                
                 self.eip_7702_valid_nonce_update(
-                    // 中文注释: 参见下一行代码含义
+                    
                     &txn.authorizations_7702,
-                    // 中文注释: 参见下一行代码含义
+                    
                     &mut account_nonces,
-                    // 中文注释: 参见下一行代码含义
+                    
                     chain_id,
-                // 中文注释: 参见下一行代码含义
+                
                 );
-            // 中文注释: 参见下一行代码含义
+            
             }
-        // 中文注释: 参见下一行代码含义
+        
         }
 
-        // 中文注释: 参见下一行代码含义
+        
         Ok(())
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn get_expected_execution_results(
-        // 中文注释: 参见下一行代码含义
+        
         &self,
-        // 中文注释: 参见下一行代码含义
+        
         block_seq_num: SeqNum,
-        // 中文注释: 参见下一行代码含义
+        
         extending_blocks: Vec<&Self::ValidatedBlock>,
-        // 中文注释: 参见下一行代码含义
+        
         state_backend: &SBT,
-    // 中文注释: 参见下一行代码含义
+    
     ) -> Result<Vec<EthHeader>, StateBackendError> {
-        // 中文注释: 参见下一行代码含义
+        
         if block_seq_num < self.execution_delay {
-            // 中文注释: 参见下一行代码含义
+            
             return Ok(Vec::new());
-        // 中文注释: 参见下一行代码含义
+        
         }
-        // 中文注释: 参见下一行代码含义
+        
         let base_seq_num = block_seq_num - self.execution_delay;
-        // 中文注释: 参见下一行代码含义
+        
         let block_index = self.get_block_index(&Some(&extending_blocks), &base_seq_num)?;
 
-        // 中文注释: 参见下一行代码含义
+        
         let expected_execution_result = state_backend.get_execution_result(
-            // 中文注释: 参见下一行代码含义
+            
             &block_index.block_id,
-            // 中文注释: 参见下一行代码含义
+            
             &block_index.seq_num,
-            // 中文注释: 参见下一行代码含义
+            
             block_index.is_finalized,
-        // 中文注释: 参见下一行代码含义
+        
         )?;
 
-        // 中文注释: 参见下一行代码含义
+        
         Ok(vec![expected_execution_result])
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn update_committed_block(&mut self, block: &Self::ValidatedBlock, chain_config: &CCT) {
-        // 中文注释: 参见下一行代码含义
+        
         assert_eq!(block.get_seq_num(), self.last_commit + SeqNum(1));
-        // 中文注释: 参见下一行代码含义
+        
         self.last_commit = block.get_seq_num();
-        // 中文注释: 参见下一行代码含义
+        
         self.committed_cache.update_committed_block(block);
-    // 中文注释: 参见下一行代码含义
+    
     }
 
-    // 中文注释: 参见下一行代码含义
+    
     fn reset(
-        // 中文注释: 参见下一行代码含义
+        
         &mut self,
-        // 中文注释: 参见下一行代码含义
+        
         last_delay_committed_blocks: Vec<&Self::ValidatedBlock>,
-        // 中文注释: 参见下一行代码含义
+        
         chain_config: &CCT,
-    // 中文注释: 参见下一行代码含义
+    
     ) {
-        // 中文注释: 参见下一行代码含义
+        
         self.committed_cache = CommittedBlkBuffer::new(self.committed_cache.min_buffer_size);
-        // 中文注释: 参见下一行代码含义
+        
         for block in last_delay_committed_blocks {
-            // 中文注释: 参见下一行代码含义
+            
             self.last_commit = block.get_seq_num();
-            // 中文注释: 参见下一行代码含义
+            
             self.committed_cache.update_committed_block(block);
-        // 中文注释: 参见下一行代码含义
+        
         }
-    // 中文注释: 参见下一行代码含义
+    
     }
-// 中文注释: 参见下一行代码含义
+
 }
 
 #[cfg(test)]
